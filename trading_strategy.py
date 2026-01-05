@@ -267,6 +267,10 @@ def run_strategy(
     rsi = calculate_rsi(close, window=14)
     macd, signal = calculate_macd(close)
 
+    # Dynamic FGI thresholds based on rolling percentiles
+    buy_thresh = fgi_df["fgi_value"].rolling(30, min_periods=1).quantile(0.2)
+    sell_thresh = fgi_df["fgi_value"].rolling(30, min_periods=1).quantile(0.8)
+
 
 
     in_position = False
@@ -289,8 +293,10 @@ def run_strategy(
 
         fgi_val = fgi_df.loc[dt_date_only, "fgi_value"]
         rsi_val = rsi.iloc[i] if pd.notna(rsi.iloc[i]) else 50.0
-        is_buy = fgi_val <= 35 and rsi_val < 30
-        is_extreme_greed = fgi_val > 80
+        buy_thresh_val = buy_thresh.loc[dt_date_only]
+        sell_thresh_val = sell_thresh.loc[dt_date_only]
+        is_buy = fgi_val <= buy_thresh_val and rsi_val < 30
+        is_extreme_greed = fgi_val >= sell_thresh_val
         is_overbought = rsi_val > 70
 
         if not in_position and is_buy:
