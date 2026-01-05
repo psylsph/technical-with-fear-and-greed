@@ -235,12 +235,39 @@ def fetch_fear_greed_index(limit: int = 730) -> pd.DataFrame:
     return fgi_df.sort_index()
 
 
+def calculate_rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    """Calculate RSI manually."""
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.rolling(window).mean()
+    avg_loss = loss.rolling(window).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+
+def calculate_macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
+    """Calculate MACD manually."""
+    fast_ema = close.ewm(span=fast).mean()
+    slow_ema = close.ewm(span=slow).mean()
+    macd = fast_ema - slow_ema
+    signal_line = macd.ewm(span=signal).mean()
+    return macd, signal_line
+
+
 def run_strategy(
     close: pd.Series, freq: str, fgi_df: pd.DataFrame, granularity_name: str
 ) -> dict:
-    """Run fear & greed strategy and return performance metrics."""
+    """Run fear & greed strategy with RSI filter and dynamic FGI thresholds, return performance metrics."""
     entries = pd.DataFrame.vbt.signals.empty_like(close).to_frame()
     exits = pd.DataFrame.vbt.signals.empty_like(close).to_frame()
+
+    # Calculate indicators
+    rsi = calculate_rsi(close, window=14)
+    macd, signal = calculate_macd(close)
+
+
 
     in_position = False
     position_price = 0.0
@@ -261,8 +288,10 @@ def run_strategy(
             continue
 
         fgi_val = fgi_df.loc[dt_date_only, "fgi_value"]
-        is_buy = fgi_val <= 35
+        rsi_val = rsi.iloc[i] if pd.notna(rsi.iloc[i]) else 50.0
+        is_buy = fgi_val <= 35 and rsi_val < 30
         is_extreme_greed = fgi_val > 80
+        is_overbought = rsi_val > 70
 
         if not in_position and is_buy:
             entries.iloc[i, 0] = True
@@ -274,6 +303,7 @@ def run_strategy(
 
             if (
                 is_extreme_greed
+                or is_overbought
                 or pnl_pct >= take_profit_pct
                 or pnl_pct <= -stop_loss_pct
             ):
