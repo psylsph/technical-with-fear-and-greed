@@ -12,21 +12,42 @@ from dotenv import load_dotenv
 import pandas as pd
 import vectorbt as vbt
 import warnings
+import sklearn.ensemble as skl
+import os
+import requests
+import yfinance as yf
+import argparse
+# Alpaca trading imports (for live trading functionality)
+try:
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.requests import MarketOrderRequest
+    from alpaca.trading.enums import TimeInForce
+    ALPACA_AVAILABLE = True
+except ImportError:
+    ALPACA_AVAILABLE = False
+    print("Note: alpaca-py not installed. Live trading features disabled.")
 
 warnings.filterwarnings("ignore")
 
 load_dotenv()
+
+parser = argparse.ArgumentParser(description='Fear & Greed Trading Strategy')
+parser.add_argument('--live', action='store_true', help='Run live trading instead of backtesting')
+args = parser.parse_args()
 
 INITIAL_CAPITAL = 1000
 
 MAKER_FEE = 0.0015
 TAKER_FEE = 0.0025
 
+pred_series = None  # Global ML predictions
+
 GRANULARITY_TO_SECONDS = {
     "ONE_MINUTE": 60,
     "FIVE_MINUTE": 300,
     "FIFTEEN_MINUTE": 900,
     "ONE_HOUR": 3600,
+    "FOUR_HOUR": 14400,
     "ONE_DAY": 86400,
 }
 
@@ -232,6 +253,7 @@ def fetch_fear_greed_index(limit: int = 730) -> pd.DataFrame:
 
     fgi_df = pd.DataFrame(records)
     fgi_df.set_index("date", inplace=True)
+    fgi_df.index = pd.to_datetime(fgi_df.index).tz_localize('UTC')
     return fgi_df.sort_index()
 
 
@@ -256,26 +278,82 @@ def calculate_macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int
     return macd, signal_line
 
 
+def prepare_ml_data(close: pd.Series, fgi_df: pd.DataFrame, rsi: pd.Series, volume: pd.Series = None):
+    """Prepare dataset for ML training."""
+    if volume is None:
+        volume = close * 0.01  # dummy
+    df = pd.DataFrame({
+        'fgi': fgi_df['fgi_value'],
+        'close': close,
+        'rsi': rsi,
+        'volume': volume,
+        'fgi_lag1': fgi_df['fgi_value'].shift(1)
+    }).dropna()
+    df['target'] = (df['fgi'].shift(-1) > df['fgi']).astype(int)  # 1 if next FGI up
+    return df
+
+
+def get_current_fgi():
+    """Fetch current Fear & Greed Index."""
+    url = "https://api.alternative.me/fng/?limit=1"
+    response = requests.get(url)
+    data = response.json()
+    return int(data['data'][0]['value'])
+
+
+def get_current_price(symbol):
+    """Fetch current price using yfinance."""
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period='1d')
+    return hist['Close'].iloc[-1] if not hist.empty else None
+
+
+def execute_trade(symbol, side, qty, trading_client=None):
+    """Execute trade via Alpaca."""
+    if not ALPACA_AVAILABLE or trading_client is None:
+        print(f"Trade execution disabled (Alpaca not configured): {side} {qty} {symbol}")
+        return None
+    
+    order_data = MarketOrderRequest(
+        symbol=symbol,
+        qty=qty,
+        side=side,
+        type='market',
+        time_in_force=TimeInForce.DAY
+    )
+    try:
+        order = trading_client.submit_order(order_data)
+        print(f"Order submitted: {order.id}")
+        return order
+    except Exception as e:
+        print(f"Order failed: {e}")
+        return None
+
+
 def run_strategy(
-    close: pd.Series, freq: str, fgi_df: pd.DataFrame, granularity_name: str
+    close: pd.Series, freq: str, fgi_df: pd.DataFrame, granularity_name: str,
+    rsi_window: int = 14, trail_pct: float = 0.10, buy_quantile: float = 0.2,
+    sell_quantile: float = 0.8, ml_thresh: float = 0.5
 ) -> dict:
-    """Run fear & greed strategy with RSI filter and dynamic FGI thresholds, return performance metrics."""
+    """Run fear & greed strategy with RSI filter, dynamic FGI thresholds, trailing stops, and multi-TF analysis, return performance metrics."""
     entries = pd.DataFrame.vbt.signals.empty_like(close).to_frame()
     exits = pd.DataFrame.vbt.signals.empty_like(close).to_frame()
 
     # Calculate indicators
-    rsi = calculate_rsi(close, window=14)
+    rsi = calculate_rsi(close, window=rsi_window)
     macd, signal = calculate_macd(close)
 
-    # Dynamic FGI thresholds based on rolling percentiles
-    buy_thresh = fgi_df["fgi_value"].rolling(30, min_periods=1).quantile(0.2)
-    sell_thresh = fgi_df["fgi_value"].rolling(30, min_periods=1).quantile(0.8)
+    # Dynamic FGI thresholds
+    buy_thresh = fgi_df["fgi_value"].rolling(30, min_periods=1).quantile(buy_quantile)
+    sell_thresh = fgi_df["fgi_value"].rolling(30, min_periods=1).quantile(sell_quantile)
+
+    # Multi-TF: For sub-daily, check daily RSI (removed, using ML instead)
 
 
 
     in_position = False
     position_price = 0.0
-    stop_loss_pct = 0.15
+    trailing_stop = 0.0
     take_profit_pct = 0.25
 
     for i in range(len(close)):
@@ -285,9 +363,6 @@ def run_strategy(
         dt_ts = pd.Timestamp(dt)
         dt_date_only = dt_ts.normalize()
 
-        if dt_date_only.tz is not None:
-            dt_date_only = dt_date_only.tz_localize(None)
-
         if dt_date_only not in fgi_df.index:
             continue
 
@@ -295,7 +370,8 @@ def run_strategy(
         rsi_val = rsi.iloc[i] if pd.notna(rsi.iloc[i]) else 50.0
         buy_thresh_val = buy_thresh.loc[dt_date_only]
         sell_thresh_val = sell_thresh.loc[dt_date_only]
-        is_buy = fgi_val <= buy_thresh_val and rsi_val < 30
+        pred_val = pred_series.loc[dt_date_only] if dt_date_only in pred_series.index else 0.5
+        is_buy = (fgi_val <= buy_thresh_val and rsi_val < 30) and (pred_val > ml_thresh)
         is_extreme_greed = fgi_val >= sell_thresh_val
         is_overbought = rsi_val > 70
 
@@ -303,15 +379,18 @@ def run_strategy(
             entries.iloc[i, 0] = True
             in_position = True
             position_price = price
+            trailing_stop = price * (1 - trail_pct)
 
         if in_position:
+            # Update trailing stop
+            trailing_stop = max(trailing_stop, price * (1 - trail_pct))
             pnl_pct = (price - position_price) / position_price
 
             if (
                 is_extreme_greed
                 or is_overbought
                 or pnl_pct >= take_profit_pct
-                or pnl_pct <= -stop_loss_pct
+                or price <= trailing_stop
             ):
                 exits.iloc[i, 0] = True
                 in_position = False
@@ -369,8 +448,8 @@ def fetch_yahoo_data(symbol: str, start: str, end: str, interval: str) -> pd.Ser
     return close_series
 
 
-START_DATE = "2025-01-01"
-END_DATE = "2026-01-04"
+START_DATE = "2024-01-01"
+END_DATE = "2025-01-01"
 
 print("=" * 60)
 print("BTC Fear & Greed Index Strategy - Multiple Timeframes")
@@ -384,15 +463,29 @@ print(f"Average FGI: {fgi_values_full.mean():.1f}")
 print(f"Fear days (FGI<=35): {(fgi_values_full <= 35).sum()}")
 print(f"Extreme Greed days (FGI>80): {(fgi_values_full > 80).sum()}")
 
+# ML Training on daily data
+print("\nTraining ML Model...")
+daily_close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, "1d")
+daily_rsi = calculate_rsi(daily_close)
+volume = daily_close * 0.01  # dummy volume
+ml_df = prepare_ml_data(daily_close, fgi_df, daily_rsi, volume)
+features = ml_df[['fgi', 'close', 'rsi', 'volume', 'fgi_lag1']]
+target = ml_df['target']
+model = skl.RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(features, target)
+pred_proba = model.predict_proba(features)[:, 1]
+pred_series = pd.Series(pred_proba, index=ml_df.index)
+print("ML Model trained.")
+
 GRANULARITIES_TO_TEST = [
     "ONE_DAY",
-    "FOUR_HOUR",
     "ONE_HOUR",
 ]
 
-results = []
+if not args.live:
+    results = []
 
-for granularity in GRANULARITIES_TO_TEST:
+    for granularity in GRANULARITIES_TO_TEST:
     print(f"\n{'=' * 60}")
     print(f"Testing {granularity} ({GRANULARITY_TO_FREQ[granularity]})")
     print(f"{'=' * 60}")
@@ -403,11 +496,24 @@ for granularity in GRANULARITIES_TO_TEST:
 
     yf_interval = GRANULARITY_TO_FREQ[granularity]
     try:
-        print("Using Yahoo Finance...")
-        close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, yf_interval)
-        data_source = "Yahoo Finance"
+        try:
+            with open('cdp_api_key.json', 'r') as f:
+                cdp_keys = json.load(f)
+            coinbase_api_key = cdp_keys['name']
+            coinbase_secret = cdp_keys['privateKey']
+            os.environ['COINBASE_API_KEY'] = coinbase_api_key
+            os.environ['COINBASE_SECRET_KEY'] = coinbase_secret
+            print("Using Coinbase...")
+            close = fetch_coinbase_historical("BTC-USD", START_DATE + "T00:00:00Z", END_DATE + "T00:00:00Z", granularity.upper())
+            if isinstance(close, pd.DataFrame):
+                close = close['close']
+            data_source = "Coinbase"
+        except Exception as e:
+            print(f"Coinbase setup error: {e}, using Yahoo Finance...")
+            close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, yf_interval)
+            data_source = "Yahoo Finance"
     except Exception as e:
-        print(f"Yahoo Finance error: {e}")
+        print(f"Data fetch error: {e}")
         continue
 
     if close is None or len(close) < 10:
@@ -445,7 +551,71 @@ print(f"{'-' * 80}")
 print(
     f"Best Return: {best_return['granularity']} with {best_return['total_return']:.2f}%"
 )
-print(
-    f"Best Sharpe: {best_sharpe['granularity']} with {best_sharpe['sharpe_ratio']:.2f}"
-)
-print(f"{'=' * 80}")
+    print(
+        f"Best Sharpe: {best_sharpe['granularity']} with {best_sharpe['sharpe_ratio']:.2f}"
+    )
+    print(f"{'=' * 80}")
+
+    # Parameter optimization for ONE_DAY (long data available)
+    print("\nOptimizing parameters for ONE_DAY...")
+    close_oned = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, '1d')
+    if close_oned is not None and len(close_oned) > 10:
+        combos = [
+            (14, 0.05, 0.2, 0.8, 0.4),  # tighter trail, lower ML
+            (14, 0.05, 0.2, 0.8, 0.6),  # tighter trail, higher ML
+            (14, 0.15, 0.2, 0.8, 0.4),  # looser trail, lower ML
+            (14, 0.15, 0.2, 0.8, 0.6),  # looser trail, higher ML
+        ]
+        best_ret = -float('inf')
+        best_combo = None
+        for rsi, trail, buy_q, sell_q, ml_t in combos:
+            result = run_strategy(close_oned, '1d', fgi_df, 'ONE_DAY', rsi, trail, buy_q, sell_q, ml_t)
+            ret = result['total_return']
+            print(f"Combo RSI{rsi} Trail{trail} BuyQ{buy_q} SellQ{sell_q} ML{ml_t}: Return {ret:.2f}%, Win {result['win_rate']:.1f}%, Trades {result['total_trades']}")
+            if ret > best_ret:
+                best_ret = ret
+                best_combo = (rsi, trail, buy_q, sell_q, ml_t)
+        print(f"Best combo: {best_combo} with {best_ret:.2f}% return")
+    else:
+        print("ONE_DAY data insufficient for optimization")
+
+if args.live:
+    # Live Trading Setup (Paper Mode)
+    api_key = os.getenv('ALPACA_API_KEY')
+    secret_key = os.getenv('ALPACA_SECRET_KEY')
+    if api_key and secret_key and ALPACA_AVAILABLE:
+        trading_client = TradingClient(api_key, secret_key, paper=True)
+        account = trading_client.get_account()
+        print("\nPaper Trading Setup: Connected to Alpaca")
+        print(f"Account Cash: ${account.cash}")
+        print(f"Account Equity: ${account.equity}")
+
+        # Get current position
+        positions = trading_client.get_all_positions()
+        btc_position = next((p for p in positions if p.symbol == 'BTC/USD'), None)
+        print(f"Current BTC position: {btc_position.qty if btc_position else 0}")
+
+        # Get current signal
+        current_fgi = get_current_fgi()
+        current_close = get_current_price('BTC-USD')
+        if current_close is None:
+            print("Could not fetch current price")
+        else:
+            current_rsi = calculate_rsi(pd.Series([current_close]), 14).iloc[-1]
+            pred_val = pred_series.loc[pd.Timestamp.now().normalize()] if pred_series is not None and pd.Timestamp.now().normalize() in pred_series.index else 0.5
+            is_buy = current_fgi <= 20 and current_rsi < 30 and pred_val > 0.6
+            is_sell = current_fgi >= 80 or current_rsi > 70
+
+            print(f"Current FGI: {current_fgi}, RSI: {current_rsi:.2f}, Pred: {pred_val:.2f}, Signal: {'BUY' if is_buy else 'SELL' if is_sell else 'HOLD'}")
+
+            if is_buy and (btc_position is None or float(btc_position.qty) == 0):
+                execute_trade('BTC/USD', OrderSide.BUY, 0.001)
+            elif is_sell and btc_position and float(btc_position.qty) > 0:
+                execute_trade('BTC/USD', OrderSide.SELL, float(btc_position.qty))
+    elif not ALPACA_AVAILABLE:
+        print("\nPaper Trading: alpaca-py not installed")
+    else:
+        print("\nPaper Trading: ALPACA_API_KEY and ALPACA_SECRET_KEY not set")
+else:
+    print("\nBacktest complete. Use --live for live trading.")
+#print("\nLive Trading: Code implemented for Alpaca paper trading. Requires env vars and correct imports.")

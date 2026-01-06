@@ -62,6 +62,50 @@ Implement ideas 1-4 from initial suggestions. Prioritize in this order: 1. Techn
 
 **Post-Stage Check:** Run; verify signal consistency (e.g., fewer false positives). Fees intact.
 
+## Additional Ideas for Further Improvement
+
+### 5. Machine Learning Integration (Prediction Layer)
+**Description:** Use ML to predict FGI trends or entry/exit probabilities.
+**Steps:** Collect data, train model (e.g., Random Forest), integrate predictions, backtest with walk-forward validation.
+**Potential Impact:** Higher accuracy in volatile markets.
+**Challenges:** Overfitting; requires scikit-learn.
+**Timeline:** 1-2 weeks.
+
+### 6. Portfolio Diversification (Expansion Layer)
+**Description:** Expand to correlated assets (e.g., ETH).
+**Steps:** Fetch multi-asset data, adapt strategy, implement correlation checks, backtest portfolio.
+**Potential Impact:** Reduced volatility.
+**Challenges:** Data handling.
+**Timeline:** 1 week.
+
+### 7. Parameter Optimization (Tuning Layer)
+**Description:** Optimize hyperparameters (e.g., RSI window, trail %).
+**Steps:** Define ranges, use grid search, validate out-of-sample, update code.
+**Potential Impact:** Fine-tuned performance.
+**Challenges:** Computational cost.
+**Timeline:** 3-5 days.
+
+### 8. Advanced Risk Management (Protection Layer)
+**Description:** Add Kelly position sizing and drawdown limits.
+**Steps:** Implement Kelly formula, calculate sizes, add portfolio stops, backtest.
+**Potential Impact:** Better capital preservation.
+**Challenges:** Dynamic sizing.
+**Timeline:** 1 week.
+
+### 9. Sentiment and On-Chain Integration (Data Layer)
+**Description:** Incorporate sentiment or on-chain metrics.
+**Steps:** Source APIs, add features, test correlation, backtest.
+**Potential Impact:** Earlier signals.
+**Challenges:** API costs.
+**Timeline:** 1-2 weeks.
+
+### 10. Live Trading and Monitoring Setup (Execution Layer)
+**Description:** Set up live execution.
+**Steps:** Integrate broker API, add execution logic, run paper/live trading.
+**Potential Impact:** Real-world profits.
+**Challenges:** Slippage.
+**Timeline:** 2 weeks.
+
 ## Overall Timeline
 7-10 days, iterative (implement/test one idea before next). Total Effort: ~20-30 hours.
 

@@ -1,3 +1,4 @@
+alpaca-py
 anywidget==0.9.21
 asttokens==3.0.1
 beautifulsoup4==4.14.3
