@@ -431,6 +431,144 @@ def get_current_price(symbol: str) -> Optional[float]:
     return hist["Close"].iloc[-1] if not hist.empty else None
 
 
+def fetch_unified_price_data(
+    symbol: str, start: str, end: str, freq: str = "1d"
+) -> pd.DataFrame:
+    """Fetch price data using Coinbase as primary source, Yahoo as fallback.
+
+    Priority order:
+    1. Coinbase (cached or fresh fetch)
+    2. Yahoo (only if Coinbase unavailable for requested dates)
+
+    Args:
+        symbol: Trading symbol (e.g., "BTC-USD")
+        start: Start date (YYYY-MM-DD)
+        end: End date (YYYY-MM-DD)
+        freq: Frequency string (e.g., "1d", "1h", "4h")
+
+    Returns:
+        DataFrame with OHLCV data indexed by timestamp
+    """
+    import numpy as np
+
+    # Map freq to granularity for Coinbase
+    freq_to_granularity = {
+        "1d": "ONE_DAY",
+        "1h": "ONE_HOUR",
+        "4h": "FOUR_HOUR",
+        "15m": "FIFTEEN_MINUTE",
+        "5m": "FIVE_MINUTE",
+        "1m": "ONE_MINUTE",
+    }
+
+    granularity = freq_to_granularity.get(freq, "ONE_DAY")
+    product_id = symbol.replace("-", "-")  # BTC-USD format for Coinbase
+
+    # Try Coinbase first
+    print(f"Fetching data: {symbol} {start} to {end} ({freq})")
+    print("  Trying Coinbase (primary source)...")
+
+    coinbase_data = None
+
+    # Check cache first
+    cached_coinbase = get_cached_data(product_id, start, end, granularity, "coinbase")
+
+    if cached_coinbase is not None:
+        print(f"  Using cached Coinbase data ({len(cached_coinbase)} bars)")
+        coinbase_data = cached_coinbase
+    else:
+        # Try fresh Coinbase fetch
+        coinbase_data = fetch_coinbase_historical(
+            product_id=product_id,
+            start=start + "T00:00:00Z",
+            end=end + "T00:00:00Z",
+            granularity=granularity,
+            use_cache=True,
+        )
+
+    if coinbase_data is not None and len(coinbase_data) > 0:
+        # Check if Coinbase data covers the requested range
+        date_range_start = pd.Timestamp(start).tz_localize("UTC")
+        date_range_end = pd.Timestamp(end).tz_localize("UTC")
+
+        data_start = coinbase_data.index[0]
+        data_end = coinbase_data.index[-1]
+
+        # Allow small gap (within 5% of requested range)
+        requested_days = (date_range_end - date_range_start).days
+        actual_days = (data_end - data_start).days
+
+        coverage_ratio = actual_days / requested_days if requested_days > 0 else 0
+
+        if coverage_ratio >= 0.95:
+            print(f"  Coinbase covers {coverage_ratio:.1%} of requested range")
+            return coinbase_data[["open", "high", "low", "close", "volume"]]
+        else:
+            print(f"  Coinbase covers only {coverage_ratio:.1%} of requested range")
+            print(f"  Data range: {data_start.date()} to {data_end.date()}")
+            print("  Falling back to Yahoo to supplement...")
+
+    # Try Yahoo as fallback/supplement
+    print("  Trying Yahoo (supplementary source)...")
+
+    yahoo_data = fetch_yahoo_data(symbol, start, end, freq)
+
+    if yahoo_data is None:
+        print("  Yahoo also unavailable")
+        # Return whatever Coinbase data we have
+        if coinbase_data is not None and len(coinbase_data) > 0:
+            return coinbase_data[["open", "high", "low", "close", "volume"]]
+        return None
+
+    # Yahoo returns Series, convert to DataFrame
+    if isinstance(yahoo_data, pd.Series):
+        yahoo_df = pd.DataFrame(
+            {
+                "open": yahoo_data,
+                "high": yahoo_data,
+                "low": yahoo_data,
+                "close": yahoo_data,
+                "volume": np.nan,
+            },
+            index=yahoo_data.index,
+        )
+    else:
+        yahoo_df = yahoo_data
+
+    # Merge Coinbase and Yahoo if both have data
+    if coinbase_data is not None and len(coinbase_data) > 0 and len(yahoo_df) > 0:
+        print("  Merging Coinbase and Yahoo data...")
+
+        # Prioritize Coinbase, fill gaps with Yahoo
+        merged_data = coinbase_data.copy()
+
+        # Yahoo data not in Coinbase
+        yahoo_only = yahoo_df[~yahoo_df.index.isin(merged_data.index)]
+
+        if len(yahoo_only) > 0:
+            print(f"    Adding {len(yahoo_only)} bars from Yahoo (not in Coinbase)")
+            merged_data = pd.concat([merged_data, yahoo_only]).sort_index()
+
+        # Fill missing volume from Coinbase with Yahoo (or NaN)
+        if merged_data["volume"].isna().any():
+            merged_data["volume"] = merged_data["volume"].fillna(yahoo_df["volume"])
+
+        print(
+            f"  Merged result: {len(merged_data)} bars ({len(coinbase_data)} from Coinbase + {len(yahoo_only)} from Yahoo)"
+        )
+
+        # Cache merged data as Coinbase (since it's the primary)
+        save_cached_data(product_id, merged_data, granularity, "coinbase")
+
+        return merged_data[["open", "high", "low", "close", "volume"]]
+
+    # Only Yahoo available
+    print(f"  Using Yahoo data only ({len(yahoo_df)} bars)")
+    # Cache as Coinbase since it's filling in
+    save_cached_data(product_id, yahoo_df, granularity, "coinbase")
+    return yahoo_df[["open", "high", "low", "close", "volume"]]
+
+
 def fetch_yahoo_data(symbol: str, start: str, end: str, interval: str) -> pd.Series:
     """Fetch data from Yahoo Finance with SQLite caching and date range handling."""
     # Check cache first

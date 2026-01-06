@@ -4,8 +4,6 @@ Main entry point for the Fear & Greed Index Trading Strategy.
 """
 
 import argparse
-import json
-import os
 
 import pandas as pd
 
@@ -17,9 +15,8 @@ from src.config import (
 )
 from src.data.data_fetchers import (
     calculate_higher_tf_indicators,
-    fetch_coinbase_historical,
     fetch_fear_greed_index,
-    fetch_yahoo_data,
+    fetch_unified_price_data,
 )
 from src.ml.ml_model import train_ml_model
 from src.strategy import run_strategy
@@ -84,48 +81,16 @@ def run_backtesting(fgi_df: pd.DataFrame):
         print(f"Testing {granularity} ({GRANULARITY_TO_FREQ[granularity]})")
         print(f"{'=' * 60}")
 
-        close = None
         freq = GRANULARITY_TO_FREQ[granularity]
-        data_source = "Unknown"
 
-        try:
-            # Try Coinbase first
-            try:
-                from src.config import CDP_KEY_FILE
+        # Use unified fetch (Coinbase primary, Yahoo fallback)
+        ohlcv_data = fetch_unified_price_data("BTC-USD", START_DATE, END_DATE, freq)
 
-                if os.path.exists(CDP_KEY_FILE):
-                    with open(CDP_KEY_FILE, "r") as f:
-                        cdp_keys = json.load(f)
-                    # Set environment variables for Coinbase
-                    os.environ["COINBASE_API_KEY"] = cdp_keys.get("name", "")
-                    os.environ["COINBASE_SECRET_KEY"] = cdp_keys.get("privateKey", "")
-                    print("Using Coinbase...")
-                    close = fetch_coinbase_historical(
-                        "BTC-USD",
-                        START_DATE + "T00:00:00Z",
-                        END_DATE + "T00:00:00Z",
-                        granularity.upper(),
-                    )
-                    if isinstance(close, pd.DataFrame):
-                        close = close["close"]
-                    data_source = "Coinbase"
-                else:
-                    raise FileNotFoundError("CDP key file not found")
-            except Exception as e:
-                print(f"Coinbase setup error: {e}, using Yahoo Finance...")
-                close = fetch_yahoo_data(
-                    "BTC-USD", START_DATE, END_DATE, GRANULARITY_TO_FREQ[granularity]
-                )
-                data_source = "Yahoo Finance"
-        except Exception as e:
-            print(f"Data fetch error for {granularity}: {e}")
-            continue
-
-        if close is None or len(close) < 10:
+        if ohlcv_data is None or len(ohlcv_data) < 10:
             print(f"Insufficient data for {granularity}")
             continue
 
-        print(f"Data source: {data_source}")
+        close = ohlcv_data["close"]
         print(f"Total bars: {len(close)}")
 
         # Initial backtest without ML (pred_series is None, so ML is disabled)
@@ -152,7 +117,12 @@ def run_backtesting(fgi_df: pd.DataFrame):
 
     # Train ML model with automated lookback optimization
     print("\nTraining ML Model (testing 90, 180, 365 day lookback periods)...")
-    daily_close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, "1d")
+    daily_ohlcv = fetch_unified_price_data("BTC-USD", START_DATE, END_DATE, "1d")
+    daily_close = daily_ohlcv["close"] if daily_ohlcv is not None else None
+
+    if daily_close is None:
+        print("Failed to fetch data for ML training")
+        return
 
     lookback_periods = [90, 180, 365]
     best_lookback = None
@@ -197,8 +167,7 @@ def run_backtesting(fgi_df: pd.DataFrame):
 
     # Parameter optimization
     print("\nOptimizing parameters for ONE_DAY...")
-    close_oned = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, "1d")
-    if close_oned is not None and len(close_oned) > 10:
+    if daily_close is not None and len(daily_close) > 10:
         combos = [
             (14, 0.05, 0.2, 0.8, 0.4),  # tighter trail, lower ML
             (14, 0.05, 0.2, 0.8, 0.6),  # tighter trail, higher ML
@@ -209,7 +178,7 @@ def run_backtesting(fgi_df: pd.DataFrame):
         best_combo = None
         for rsi, trail, buy_q, sell_q, ml_t in combos:
             result = run_strategy(
-                close_oned,
+                daily_close,
                 "1d",
                 fgi_df,
                 "ONE_DAY",
@@ -243,48 +212,16 @@ def run_backtesting(fgi_df: pd.DataFrame):
             print("\nFinal backtest with optimized parameters...")
             final_results = []
             for granularity in GRANULARITIES_TO_TEST:
-                close_final = None
                 freq = GRANULARITY_TO_FREQ[granularity]
 
-                try:
-                    # Try Coinbase first
-                    try:
-                        from src.config import CDP_KEY_FILE
+                # Use unified fetch (Coinbase primary, Yahoo fallback)
+                ohlcv_final = fetch_unified_price_data(
+                    "BTC-USD", START_DATE, END_DATE, freq
+                )
 
-                        if os.path.exists(CDP_KEY_FILE):
-                            with open(CDP_KEY_FILE, "r") as f:
-                                cdp_keys = json.load(f)
-                            os.environ["COINBASE_API_KEY"] = cdp_keys.get("name", "")
-                            os.environ["COINBASE_SECRET_KEY"] = cdp_keys.get(
-                                "privateKey", ""
-                            )
-                            close_final = fetch_coinbase_historical(
-                                "BTC-USD",
-                                START_DATE + "T00:00:00Z",
-                                END_DATE + "T00:00:00Z",
-                                granularity.upper(),
-                            )
-                            if isinstance(close_final, pd.DataFrame):
-                                close_final = close_final["close"]
-                        else:
-                            raise FileNotFoundError("CDP key file not found")
-                    except Exception as e:
-                        print(
-                            f"Coinbase setup error for final backtest: {e}, using Yahoo Finance..."
-                        )
-                        close_final = fetch_yahoo_data(
-                            "BTC-USD",
-                            START_DATE,
-                            END_DATE,
-                            GRANULARITY_TO_FREQ[granularity],
-                        )
-                except Exception as e:
-                    print(f"Final backtest data fetch error for {granularity}: {e}")
-                    continue
-
-                if close_final is not None and len(close_final) >= 10:
+                if ohlcv_final is not None and len(ohlcv_final) >= 10:
                     result = run_strategy(
-                        close_final,
+                        ohlcv_final["close"],
                         freq,
                         fgi_df,
                         granularity,
@@ -348,7 +285,14 @@ def run_multi_tf_backtesting(fgi_df: pd.DataFrame):
     # Fetch higher timeframe data (daily) for trend filtering
     print(f"\nFetching higher timeframe data: {higher_tf_granularity}...")
     higher_freq = GRANULARITY_TO_FREQ[higher_tf_granularity]
-    higher_tf_close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, higher_freq)
+    higher_tf_ohlcv = fetch_unified_price_data(
+        "BTC-USD", START_DATE, END_DATE, higher_freq
+    )
+    if higher_tf_ohlcv is None or len(higher_tf_ohlcv) < 50:
+        print("Insufficient higher timeframe data")
+        return
+
+    higher_tf_close = higher_tf_ohlcv["close"]
 
     if higher_tf_close is None or len(higher_tf_close) < 50:
         print("Insufficient higher timeframe data")
@@ -372,22 +316,17 @@ def run_multi_tf_backtesting(fgi_df: pd.DataFrame):
         print(f"{'=' * 80}")
 
         lower_freq = GRANULARITY_TO_FREQ[lower_tf]
-        lower_tf_close = None
 
-        try:
-            lower_tf_close = fetch_yahoo_data(
-                "BTC-USD", START_DATE, END_DATE, lower_freq
-            )
-            data_source = "Yahoo Finance"
-        except Exception as e:
-            print(f"Error fetching {lower_tf}: {e}")
-            continue
+        # Use unified fetch (Coinbase primary, Yahoo fallback)
+        lower_tf_ohlcv = fetch_unified_price_data(
+            "BTC-USD", START_DATE, END_DATE, lower_freq
+        )
 
-        if lower_tf_close is None or len(lower_tf_close) < 10:
+        if lower_tf_ohlcv is None or len(lower_tf_ohlcv) < 10:
             print(f"Insufficient data for {lower_tf}")
             continue
 
-        print(f"Data source: {data_source}")
+        lower_tf_close = lower_tf_ohlcv["close"]
         print(f"Total bars: {len(lower_tf_close)}")
 
         # Align higher TF data with lower TF
