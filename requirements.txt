@@ -25,7 +25,6 @@ ipywidgets==8.1.8
 jedi==0.19.2
 joblib==1.5.3
 jupyterlab_widgets==3.0.16
-jwt
 kiwisolver==1.4.9
 llvmlite==0.46.0
 matplotlib==3.10.8
@@ -49,8 +48,9 @@ psygnal==0.15.1
 ptyprocess==0.7.0
 pure_eval==0.2.3
 pycparser==2.23
-Pygments==2.19.2
+pygments==2.19.2
 pyparsing==3.3.1
+PyJWT==2.10.1
 python-dotenv==1.2.1
 python-dateutil==2.9.0.post0
 pytz==2025.2

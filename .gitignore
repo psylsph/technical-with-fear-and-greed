@@ -2,7 +2,7 @@ venv
 .venv
 .env
 .env.local
-#cdp_api_key.json
+cdp_api_key.json
 cache/
 *.pyc
 __pycache__/
