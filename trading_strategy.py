@@ -500,7 +500,10 @@ def generate_signal(
     if pred_series is not None and dt_date_only in pred_series.index:
         pred_val = pred_series.loc[dt_date_only]
 
-    is_buy = (fgi_val <= buy_thresh and latest_rsi < 30) and (pred_val > ml_thresh)
+    # Buy condition: technical signals AND (ML if available, or always pass if ML disabled)
+    technical_buy = fgi_val <= buy_thresh and latest_rsi < 30
+    ml_buy = pred_series is None or pred_val > ml_thresh  # Pass if no ML or ML threshold met
+    is_buy = technical_buy and ml_buy
     is_extreme_greed = fgi_val >= sell_thresh
     is_overbought = latest_rsi > 70
 
@@ -570,9 +573,12 @@ def run_strategy(
         buy_thresh_val = buy_thresh.loc[dt_date_only]
         sell_thresh_val = sell_thresh.loc[dt_date_only]
         pred_val = (
-            pred_series.loc[dt_date_only] if dt_date_only in pred_series.index else 0.5
+            pred_series.loc[dt_date_only] if pred_series is not None and dt_date_only in pred_series.index else 0.5
         )
-        is_buy = (fgi_val <= buy_thresh_val and rsi_val < 30) and (pred_val > ml_thresh)
+        # Buy condition: technical signals AND (ML if available, or always pass if ML disabled)
+        technical_buy = fgi_val <= buy_thresh_val and rsi_val < 30
+        ml_buy = pred_series is None or pred_val > ml_thresh  # Pass if no ML or ML threshold met
+        is_buy = technical_buy and ml_buy
         is_extreme_greed = fgi_val >= sell_thresh_val
         is_overbought = rsi_val > 70
 
@@ -664,26 +670,14 @@ print(f"Average FGI: {fgi_values_full.mean():.1f}")
 print(f"Fear days (FGI<=35): {(fgi_values_full <= 35).sum()}")
 print(f"Extreme Greed days (FGI>80): {(fgi_values_full > 80).sum()}")
 
-# ML Training on daily data
-print("\nTraining ML Model...")
-daily_close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, "1d")
-daily_rsi = calculate_rsi(daily_close)
-volume = daily_close * 0.01  # dummy volume
-ml_df = prepare_ml_data(daily_close, fgi_df, daily_rsi, volume)
-features = ml_df[["fgi", "close", "rsi", "volume", "fgi_lag1"]]
-target = ml_df["target"]
-model = skl.RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(features, target)
-pred_proba = model.predict_proba(features)[:, 1]
-pred_series = pd.Series(pred_proba, index=ml_df.index)
-print("ML Model trained.")
+print("\nRunning initial backtests (no ML)...")
 
 GRANULARITIES_TO_TEST = [
     "ONE_DAY",
     "ONE_HOUR",
 ]
 
-results = []
+initial_results = []
 
 for granularity in GRANULARITIES_TO_TEST:
     print(f"\n{'=' * 60}")
@@ -728,18 +722,19 @@ for granularity in GRANULARITIES_TO_TEST:
     print(f"Data source: {data_source}")
     print(f"Total bars: {len(close)}")
 
+    # Initial backtest without ML (pred_series is None, so ML is disabled)
     result = run_strategy(close, freq, fgi_df, granularity)
-    results.append(result)
+    initial_results.append(result)
 
 print(f"\n{'=' * 80}")
-print("SUMMARY: Performance by Timeframe")
+print("INITIAL BACKTEST RESULTS (No ML)")
 print(f"{'=' * 80}")
 print(
     f"{'Granularity':<15} {'Return %':<12} {'Benchmark %':<14} {'Outper %':<12} {'Win Rate %':<12} {'Trades':<8}"
 )
 print(f"{'-' * 80}")
 
-for result in results:
+for result in initial_results:
     print(
         f"{result['granularity']:<15} "
         f"{result['total_return']:>10.2f}% "
@@ -749,17 +744,19 @@ for result in results:
         f"{result['total_trades']:>6}"
     )
 
-best_return = max(results, key=lambda x: x["total_return"])
-best_sharpe = max(results, key=lambda x: x["sharpe_ratio"])
-
-print(f"{'-' * 80}")
-print(
-    f"Best Return: {best_return['granularity']} with {best_return['total_return']:.2f}%"
-)
-print(
-    f"Best Sharpe: {best_sharpe['granularity']} with {best_sharpe['sharpe_ratio']:.2f}"
-)
-print(f"{'=' * 80}")
+# Now train ML model after establishing baseline
+print("\nTraining ML Model...")
+daily_close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, "1d")
+daily_rsi = calculate_rsi(daily_close)
+volume = daily_close * 0.01  # dummy volume
+ml_df = prepare_ml_data(daily_close, fgi_df, daily_rsi, volume)
+features = ml_df[["fgi", "close", "rsi", "volume", "fgi_lag1"]]
+target = ml_df["target"]
+model = skl.RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(features, target)
+pred_proba = model.predict_proba(features)[:, 1]
+pred_series = pd.Series(pred_proba, index=ml_df.index)
+print("ML Model trained.")
 
 # Parameter optimization for ONE_DAY (long data available)
 print("\nOptimizing parameters for ONE_DAY...")
@@ -791,10 +788,78 @@ if close_oned is not None and len(close_oned) > 10:
         BEST_PARAMS["buy_quantile"] = best_combo[2]
         BEST_PARAMS["sell_quantile"] = best_combo[3]
         BEST_PARAMS["ml_thresh"] = best_combo[4]
-        print(
-            f"\nBest params: RSI={best_combo[0]}, Trail={best_combo[1]}, BuyQ={best_combo[2]}, SellQ={best_combo[3]}, ML={best_combo[4]}"
-        )
+        print(f"\nBest params: RSI={best_combo[0]}, Trail={best_combo[1]}, BuyQ={best_combo[2]}, SellQ={best_combo[3]}, ML={best_combo[4]}")
         print(f"Best return: {best_ret:.2f}%")
+
+        # Final backtest with optimized parameters
+        print("\nFinal backtest with optimized parameters...")
+        final_results = []
+        for granularity in GRANULARITIES_TO_TEST:
+            close_final = None
+            freq = GRANULARITY_TO_FREQ[granularity]
+
+            try:
+                try:
+                    with open("cdp_api_key.json", "r") as f:
+                        cdp_keys = json.load(f)
+                    coinbase_api_key = cdp_keys["name"]
+                    coinbase_secret = cdp_keys["privateKey"]
+                    os.environ["COINBASE_API_KEY"] = coinbase_api_key
+                    os.environ["COINBASE_SECRET_KEY"] = coinbase_secret
+                    close_final = fetch_coinbase_historical(
+                        "BTC-USD",
+                        START_DATE + "T00:00:00Z",
+                        END_DATE + "T00:00:00Z",
+                        granularity.upper(),
+                    )
+                    if isinstance(close_final, pd.DataFrame):
+                        close_final = close_final["close"]
+                except Exception:
+                    close_final = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, GRANULARITY_TO_FREQ[granularity])
+            except Exception:
+                continue
+
+            if close_final is not None and len(close_final) >= 10:
+                result = run_strategy(
+                    close_final, freq, fgi_df, granularity,
+                    rsi_window=BEST_PARAMS["rsi_window"],
+                    trail_pct=BEST_PARAMS["trail_pct"],
+                    buy_quantile=BEST_PARAMS["buy_quantile"],
+                    sell_quantile=BEST_PARAMS["sell_quantile"],
+                    ml_thresh=BEST_PARAMS["ml_thresh"]
+                )
+                final_results.append(result)
+
+        if final_results:
+            print(f"\n{'=' * 80}")
+            print("FINAL BACKTEST RESULTS (Optimized Parameters + ML)")
+            print(f"{'=' * 80}")
+            print(
+                f"{'Granularity':<15} {'Return %':<12} {'Benchmark %':<14} {'Outper %':<12} {'Win Rate %':<12} {'Trades':<8}"
+            )
+            print(f"{'-' * 80}")
+
+            for result in final_results:
+                print(
+                    f"{result['granularity']:<15} "
+                    f"{result['total_return']:>10.2f}% "
+                    f"{result['benchmark_return']:>12.2f}% "
+                    f"{result['outperformance']:>10.2f}% "
+                    f"{result['win_rate']:>10.1f}% "
+                    f"{result['total_trades']:>6}"
+                )
+
+            best_return = max(final_results, key=lambda x: x["total_return"])
+            best_sharpe = max(final_results, key=lambda x: x["sharpe_ratio"])
+
+            print(f"{'-' * 80}")
+            print(
+                f"Best Return: {best_return['granularity']} with {best_return['total_return']:.2f}%"
+            )
+            print(
+                f"Best Sharpe: {best_sharpe['granularity']} with {best_sharpe['sharpe_ratio']:.2f}"
+            )
+            print(f"{'=' * 80}")
 else:
     print("ONE_DAY data insufficient for optimization")
 
@@ -828,11 +893,25 @@ if args.test:
         save_test_state(portfolio_state)
 
     def analyze_test_signal() -> dict:
-        """Analyze current market using the EXACT same strategy as backtesting."""
+        """Analyze current market using the optimized strategy from backtesting."""
         try:
             current_close = get_current_price("BTC-USD")
             if current_close is None:
                 return None
+            close_series = pd.Series([current_close], index=[pd.Timestamp.now(tz="UTC")])
+            signal = generate_signal(
+                close_series,
+                fgi_df,
+                rsi_window=BEST_PARAMS["rsi_window"],
+                trail_pct=BEST_PARAMS["trail_pct"],
+                buy_quantile=BEST_PARAMS["buy_quantile"],
+                sell_quantile=BEST_PARAMS["sell_quantile"],
+                ml_thresh=BEST_PARAMS["ml_thresh"],
+            )
+            return signal
+        except Exception as e:
+            print(f"Error analyzing signal: {e}")
+            return None
             close_series = pd.Series(
                 [current_close], index=[pd.Timestamp.now(tz="UTC")]
             )
@@ -1014,12 +1093,29 @@ elif args.live:
             return None
 
     def analyze_live_signal() -> dict:
-        """Analyze current market using the EXACT same strategy as backtesting."""
+        """Analyze current market using the optimized strategy from backtesting."""
         try:
             current_close = get_current_price("BTC-USD")
 
             if current_close is None:
                 return None
+
+            close_series = pd.Series([current_close], index=[pd.Timestamp.now(tz="UTC")])
+
+            signal = generate_signal(
+                close_series,
+                fgi_df,
+                rsi_window=BEST_PARAMS["rsi_window"],
+                trail_pct=BEST_PARAMS["trail_pct"],
+                buy_quantile=BEST_PARAMS["buy_quantile"],
+                sell_quantile=BEST_PARAMS["sell_quantile"],
+                ml_thresh=BEST_PARAMS["ml_thresh"],
+            )
+
+            return signal
+        except Exception as e:
+            print(f"Error analyzing signal: {e}")
+            return None
 
             close_series = pd.Series(
                 [current_close], index=[pd.Timestamp.now(tz="UTC")]
