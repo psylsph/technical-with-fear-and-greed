@@ -10,7 +10,9 @@ import vectorbt as vbt
 from .config import INITIAL_CAPITAL, MAKER_FEE, TAKER_FEE
 
 # Suppress vectorbt aggregation warning (internal to vectorbt, doesn't affect functionality)
-warnings.filterwarnings("ignore", message="Object has multiple columns.*Aggregating using.*mean")
+warnings.filterwarnings(
+    "ignore", message="Object has multiple columns.*Aggregating using.*mean"
+)
 
 
 def generate_signal(
@@ -22,6 +24,8 @@ def generate_signal(
     sell_quantile: float = 0.8,
     ml_thresh: float = 0.5,
     pred_series: pd.Series = None,
+    higher_tf_data: dict = None,
+    enable_multi_tf: bool = True,
 ) -> dict:
     """Generate trading signal using the exact same logic as backtesting.
 
@@ -71,6 +75,53 @@ def generate_signal(
     is_extreme_greed = fgi_val >= sell_thresh
     is_overbought = latest_rsi > 70
 
+    # Multi-Timeframe Filtering (if enabled)
+    higher_tf_buy_filter = True
+
+    if enable_multi_tf and higher_tf_data is not None:
+        # Get higher timeframe indicators for this date/bar
+        higher_trend = higher_tf_data.get("higher_trend", True)
+        higher_rsi = higher_tf_data.get("higher_rsi", 50)
+
+        # If Series, get last value (for live trading with aligned data)
+        if isinstance(higher_trend, pd.Series):
+            higher_trend = higher_trend.iloc[-1]
+        if isinstance(higher_rsi, pd.Series):
+            higher_rsi = higher_rsi.iloc[-1]
+
+        # Filter 1: Only buy if higher timeframe trend is bullish
+        higher_tf_buy_filter = bool(higher_trend)
+
+        # Filter 2: Don't buy if higher TF is overbought (RSI > 70)
+        if higher_rsi > 70:
+            higher_tf_buy_filter = False
+
+        # Log TF conflicts for analysis
+        if is_buy and not higher_tf_buy_filter:
+            print(
+                f"  MTF CONFLICT at {dt_date_only}: Buy signal filtered by higher TF (trend={higher_trend}, rsi={higher_rsi:.1f})"
+            )
+
+    # Apply multi-TF filters to buy/sell signals
+    is_buy = is_buy and higher_tf_buy_filter
+
+    indicators = {
+        "fgi": fgi_val,
+        "fgi_buy_thresh": buy_thresh,
+        "fgi_sell_thresh": sell_thresh,
+        "rsi": latest_rsi,
+        "ml_pred": pred_val,
+        "ml_thresh": ml_thresh,
+        "price": latest_close,
+        "is_extreme_greed": is_extreme_greed,
+        "is_overbought": is_overbought,
+        "multi_tf_enabled": enable_multi_tf,
+    }
+
+    if enable_multi_tf and higher_tf_data is not None:
+        indicators["higher_trend"] = higher_tf_data.get("higher_trend", True)
+        indicators["higher_rsi"] = higher_tf_data.get("higher_rsi", 50)
+
     return {
         "signal": "buy"
         if is_buy
@@ -78,17 +129,7 @@ def generate_signal(
         if is_extreme_greed or is_overbought
         else "hold",
         "in_position": False,
-        "indicators": {
-            "fgi": fgi_val,
-            "fgi_buy_thresh": buy_thresh,
-            "fgi_sell_thresh": sell_thresh,
-            "rsi": latest_rsi,
-            "ml_pred": pred_val,
-            "ml_thresh": ml_thresh,
-            "price": latest_close,
-            "is_extreme_greed": is_extreme_greed,
-            "is_overbought": is_overbought,
-        },
+        "indicators": indicators,
     }
 
 
@@ -103,8 +144,28 @@ def run_strategy(
     sell_quantile: float = 0.8,
     ml_thresh: float = 0.5,
     pred_series: pd.Series = None,
+    higher_tf_data: dict = None,
+    enable_multi_tf: bool = True,
 ) -> dict:
-    """Run fear & greed strategy with RSI filter, dynamic FGI thresholds, trailing stops, and multi-TF analysis, return performance metrics."""
+    """Run fear & greed strategy with RSI filter, dynamic FGI thresholds, trailing stops, and multi-TF analysis, return performance metrics.
+
+    Args:
+        close: Price series at current timeframe
+        freq: Frequency string (e.g., '1d', '1h', '15min')
+        fgi_df: Fear & Greed Index data (daily)
+        granularity_name: Granularity name for reporting
+        rsi_window: RSI calculation window
+        trail_pct: Trailing stop percentage
+        buy_quantile: FGI buy quantile threshold
+        sell_quantile: FGI sell quantile threshold
+        ml_thresh: ML prediction threshold
+        pred_series: ML prediction series
+        higher_tf_data: Dictionary with higher timeframe indicators
+        enable_multi_tf: Enable multi-timeframe filtering
+
+    Returns:
+        Dictionary with performance metrics
+    """
     from .indicators import calculate_macd, calculate_rsi
 
     # Ensure close is a Series with a name for proper column handling in vectorbt
@@ -167,6 +228,51 @@ def run_strategy(
         is_extreme_greed = fgi_val >= sell_thresh_val
         is_overbought = rsi_val > 70
 
+        # Multi-Timeframe Filtering (if enabled)
+        higher_tf_buy_filter = True
+        higher_tf_sell_filter = True
+        tf_conflict_logged = False
+
+        if enable_multi_tf and higher_tf_data is not None:
+            # Get higher timeframe indicators for this date
+            higher_trend = higher_tf_data.get(
+                "higher_trend", True
+            )  # Default to bullish
+            higher_rsi = higher_tf_data.get("higher_rsi", 50)  # Default to neutral
+
+            # If Series, get value at current index (for backtesting with aligned data)
+            if isinstance(higher_trend, pd.Series):
+                higher_trend = higher_trend.iloc[i]
+            if isinstance(higher_rsi, pd.Series):
+                higher_rsi = higher_rsi.iloc[i]
+
+            # Filter 1: Only buy if higher timeframe trend is bullish
+            higher_tf_buy_filter = bool(higher_trend)
+
+            # Filter 2: Don't buy if higher TF is overbought (RSI > 70)
+            if higher_rsi > 70:
+                higher_tf_buy_filter = False
+
+            # Filter 3: Exit immediately if higher TF trend turns bearish
+            if not bool(higher_trend):
+                higher_tf_sell_filter = False
+
+            # Log TF conflicts for analysis
+            if not tf_conflict_logged:
+                if is_buy and not higher_tf_buy_filter:
+                    print(
+                        f"  MTF CONFLICT at {dt_date_only}: Buy signal filtered by higher TF (trend={higher_trend}, rsi={higher_rsi:.1f})"
+                    )
+                    tf_conflict_logged = True
+                elif in_position and not higher_tf_sell_filter:
+                    print(
+                        f"  MTF CONFLICT at {dt_date_only}: Hold position, but higher TF bearish (trend={higher_trend})"
+                    )
+                    tf_conflict_logged = True
+
+        # Apply multi-TF filters to buy/sell signals
+        is_buy = is_buy and higher_tf_buy_filter
+
         if not in_position and is_buy:
             entries.iloc[i, 0] = True
             in_position = True
@@ -197,6 +303,8 @@ def run_strategy(
             "total_trades": 0,
             "win_rate": 0.0,
             "sharpe_ratio": 0.0,
+            "multi_tf_enabled": enable_multi_tf,
+            "multi_tf_data": higher_tf_data is not None,
         }
 
     pf = vbt.Portfolio.from_signals(
@@ -220,4 +328,6 @@ def run_strategy(
         "total_trades": int(stats["Total Trades"]),
         "win_rate": stats["Win Rate [%]"],
         "sharpe_ratio": stats["Sharpe Ratio"],
+        "multi_tf_enabled": enable_multi_tf,
+        "multi_tf_data": higher_tf_data is not None,
     }

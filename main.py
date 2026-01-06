@@ -16,6 +16,7 @@ from src.config import (
     START_DATE,
 )
 from src.data.data_fetchers import (
+    calculate_higher_tf_indicators,
     fetch_coinbase_historical,
     fetch_fear_greed_index,
     fetch_yahoo_data,
@@ -35,6 +36,11 @@ def main():
         action="store_true",
         help="Run simulated live trading (paper mode with local state persistence)",
     )
+    parser.add_argument(
+        "--multi-tf",
+        action="store_true",
+        help="Run multi-timeframe backtesting with filtering comparisons",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -50,7 +56,9 @@ def main():
     print(f"Extreme Greed days (FGI>80): {(fgi_values_full > 80).sum()}")
 
     # Run backtesting
-    if not args.live and not args.test:
+    if args.multi_tf:
+        run_multi_tf_backtesting(fgi_df)
+    elif not args.live and not args.test:
         run_backtesting(fgi_df)
 
     elif args.test:
@@ -142,11 +150,50 @@ def run_backtesting(fgi_df: pd.DataFrame):
             f"{result['total_trades']:>6}"
         )
 
-    # Train ML model
-    print("\nTraining ML Model...")
+    # Train ML model with automated lookback optimization
+    print("\nTraining ML Model (testing 90, 180, 365 day lookback periods)...")
     daily_close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, "1d")
-    ml_model, pred_series = train_ml_model(daily_close, fgi_df)
-    print("ML Model trained.")
+
+    lookback_periods = [90, 180, 365]
+    best_lookback = None
+    best_return = -float("inf")
+    best_pred_series = None
+
+    for lookback in lookback_periods:
+        print(f"\n  Testing {lookback}-day lookback...")
+        model, pred_series, metrics = train_ml_model(
+            daily_close, fgi_df, lookback_days=lookback
+        )
+
+        # Quick backtest with default params to evaluate this lookback period
+        result = run_strategy(
+            daily_close,
+            "1d",
+            fgi_df,
+            "ONE_DAY",
+            rsi_window=14,
+            trail_pct=0.10,
+            buy_quantile=0.2,
+            sell_quantile=0.8,
+            ml_thresh=0.5,
+            pred_series=pred_series,
+            higher_tf_data=None,
+            enable_multi_tf=False,
+        )
+
+        total_return = result["total_return"]
+        print(f"    Return: {total_return:.2f}%, Trades: {result['total_trades']}")
+
+        if total_return > best_return:
+            best_return = total_return
+            best_lookback = lookback
+            best_pred_series = pred_series
+
+    print(
+        f"\n  Best lookback period: {best_lookback} days (return: {best_return:.2f}%)"
+    )
+    pred_series = best_pred_series
+    print("ML Model trained with optimal lookback period.")
 
     # Parameter optimization
     print("\nOptimizing parameters for ONE_DAY...")
@@ -286,6 +333,207 @@ def run_backtesting(fgi_df: pd.DataFrame):
     print(
         "\nBacktest complete. Run with --live for live trading or --test for simulated live trading."
     )
+
+
+def run_multi_tf_backtesting(fgi_df: pd.DataFrame):
+    """Run multi-timeframe backtesting with filtering comparisons."""
+    print("\n" + "=" * 80)
+    print("MULTI-TIMEFRAME BACKTESTING")
+    print("=" * 80)
+
+    # Define timeframes: higher TF (daily) and lower TFs (4H, 1H)
+    higher_tf_granularity = "ONE_DAY"
+    lower_tf_granularities = ["FOUR_HOUR", "ONE_HOUR"]
+
+    # Fetch higher timeframe data (daily) for trend filtering
+    print(f"\nFetching higher timeframe data: {higher_tf_granularity}...")
+    higher_freq = GRANULARITY_TO_FREQ[higher_tf_granularity]
+    higher_tf_close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, higher_freq)
+
+    if higher_tf_close is None or len(higher_tf_close) < 50:
+        print("Insufficient higher timeframe data")
+        return
+
+    # Calculate higher timeframe indicators
+    print("Calculating higher timeframe indicators...")
+    higher_tf_indicators = calculate_higher_tf_indicators(
+        higher_tf_close, higher_tf_granularity
+    )
+
+    print(f"  Higher TF Trend: bullish={higher_tf_indicators['trend'].iloc[-1]}")
+    print(f"  Higher TF RSI: {higher_tf_indicators['rsi'].iloc[-1]:.1f}")
+
+    # Run comparison tests for each lower timeframe
+    comparison_results = []
+
+    for lower_tf in lower_tf_granularities:
+        print(f"\n{'=' * 80}")
+        print(f"Testing {lower_tf} vs Higher TF ({higher_tf_granularity}) Filter")
+        print(f"{'=' * 80}")
+
+        lower_freq = GRANULARITY_TO_FREQ[lower_tf]
+        lower_tf_close = None
+
+        try:
+            lower_tf_close = fetch_yahoo_data(
+                "BTC-USD", START_DATE, END_DATE, lower_freq
+            )
+            data_source = "Yahoo Finance"
+        except Exception as e:
+            print(f"Error fetching {lower_tf}: {e}")
+            continue
+
+        if lower_tf_close is None or len(lower_tf_close) < 10:
+            print(f"Insufficient data for {lower_tf}")
+            continue
+
+        print(f"Data source: {data_source}")
+        print(f"Total bars: {len(lower_tf_close)}")
+
+        # Align higher TF data with lower TF
+        print("Aligning higher timeframe indicators...")
+        aligned_data = {}
+        for key, value in higher_tf_indicators.items():
+            if isinstance(value, pd.Series):
+                # Resample to lower timeframe and forward fill
+                resampled = value.resample(lower_freq).ffill()
+                # Reindex to match lower TF exactly
+                aligned = resampled.reindex(lower_tf_close.index, method="ffill")
+                aligned_data[f"higher_{key}"] = aligned
+            else:
+                aligned_data[f"higher_{key}"] = value
+
+        # Test 1: Unfiltered strategy (baseline)
+        print("\n--- Test 1: Unfiltered Strategy (Baseline) ---")
+        result_unfiltered = run_strategy(
+            lower_tf_close,
+            lower_freq,
+            fgi_df,
+            lower_tf,
+            rsi_window=BEST_PARAMS["rsi_window"],
+            trail_pct=BEST_PARAMS["trail_pct"],
+            buy_quantile=BEST_PARAMS["buy_quantile"],
+            sell_quantile=BEST_PARAMS["sell_quantile"],
+            ml_thresh=BEST_PARAMS["ml_thresh"],
+            pred_series=None,
+            higher_tf_data=None,
+            enable_multi_tf=False,
+        )
+
+        print(
+            f"  Return: {result_unfiltered['total_return']:.2f}%, "
+            f"Win Rate: {result_unfiltered['win_rate']:.1f}%, "
+            f"Trades: {result_unfiltered['total_trades']}"
+        )
+
+        # Test 2: Multi-TF filtered strategy
+        print("\n--- Test 2: Multi-TF Filtered Strategy ---")
+        result_filtered = run_strategy(
+            lower_tf_close,
+            lower_freq,
+            fgi_df,
+            lower_tf,
+            rsi_window=BEST_PARAMS["rsi_window"],
+            trail_pct=BEST_PARAMS["trail_pct"],
+            buy_quantile=BEST_PARAMS["buy_quantile"],
+            sell_quantile=BEST_PARAMS["sell_quantile"],
+            ml_thresh=BEST_PARAMS["ml_thresh"],
+            pred_series=None,
+            higher_tf_data=aligned_data,
+            enable_multi_tf=True,
+        )
+
+        print(
+            f"  Return: {result_filtered['total_return']:.2f}%, "
+            f"Win Rate: {result_filtered['win_rate']:.1f}%, "
+            f"Trades: {result_filtered['total_trades']}"
+        )
+
+        # Calculate improvements
+        return_improvement = (
+            result_filtered["total_return"] - result_unfiltered["total_return"]
+        )
+        win_rate_improvement = (
+            result_filtered["win_rate"] - result_unfiltered["win_rate"]
+        )
+        drawdown_improvement = (
+            result_unfiltered["max_drawdown"] - result_filtered["max_drawdown"]
+        )
+        trade_count_change = (
+            result_filtered["total_trades"] - result_unfiltered["total_trades"]
+        )
+
+        print("\n--- Comparison Summary ---")
+        print(f"  Return Improvement: {return_improvement:+.2f}%")
+        print(f"  Win Rate Improvement: {win_rate_improvement:+.2f}%")
+        print(f"  Drawdown Reduction: {drawdown_improvement:+.2f}%")
+        print(f"  Trade Count Change: {trade_count_change:+}")
+
+        comparison_results.append(
+            {
+                "granularity": lower_tf,
+                "unfiltered": result_unfiltered,
+                "filtered": result_filtered,
+                "return_improvement": return_improvement,
+                "win_rate_improvement": win_rate_improvement,
+                "drawdown_improvement": drawdown_improvement,
+                "trade_count_change": trade_count_change,
+            }
+        )
+
+    # Print overall summary
+    print("\n" + "=" * 80)
+    print("MULTI-TIMEFRAME FILTERING SUMMARY")
+    print("=" * 80)
+    print(
+        f"{'Granularity':<15} {'Return Imp %':<15} {'Win Rate Imp %':<15} {'Drawdown Red %':<15} {'Trades Δ':<10}"
+    )
+    print("-" * 80)
+
+    for result in comparison_results:
+        print(
+            f"{result['granularity']:<15} "
+            f"{result['return_improvement']:>13.2f}% "
+            f"{result['win_rate_improvement']:>13.2f}% "
+            f"{result['drawdown_improvement']:>13.2f}% "
+            f"{result['trade_count_change']:>10}"
+        )
+
+    # Calculate average improvements across all timeframes
+    avg_return_imp = sum(r["return_improvement"] for r in comparison_results) / len(
+        comparison_results
+    )
+    avg_win_rate_imp = sum(r["win_rate_improvement"] for r in comparison_results) / len(
+        comparison_results
+    )
+    avg_drawdown_imp = sum(r["drawdown_improvement"] for r in comparison_results) / len(
+        comparison_results
+    )
+
+    print("-" * 80)
+    print("AVERAGE IMPROVEMENTS:")
+    print(f"  Return: {avg_return_imp:+.2f}%")
+    print(f"  Win Rate: {avg_win_rate_imp:+.2f}%")
+    print(f"  Drawdown Reduction: {avg_drawdown_imp:+.2f}%")
+
+    # Recommendation based on results
+    print("\n" + "=" * 80)
+    print("RECOMMENDATIONS:")
+    print("=" * 80)
+
+    if avg_return_imp > 0 and avg_win_rate_imp > 0:
+        print("✓ Multi-TF filtering IMPROVES performance")
+        print("  → Enable multi-TF filtering for production trading")
+    elif avg_return_imp < 0:
+        print("✗ Multi-TF filtering REDUCES performance")
+        print("  → Consider disabling or adjusting filter thresholds")
+    else:
+        print("◦ Multi-TF filtering has mixed results")
+        print("  → Analyze individual timeframe performance")
+
+    if avg_drawdown_imp > 0:
+        print(f"✓ Drawdown reduced by {avg_drawdown_imp:.2f}% on average")
+        print("  → Better risk management with multi-TF")
 
 
 if __name__ == "__main__":

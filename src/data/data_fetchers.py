@@ -493,3 +493,173 @@ def fetch_yahoo_data(symbol: str, start: str, end: str, interval: str) -> pd.Ser
     except Exception as e:
         print(f"Yahoo Finance error for {symbol}: {e}")
         raise
+
+
+def resample_higher_tf(
+    higher_tf_data: pd.DataFrame | pd.Series, target_freq: str, method: str = "ffill"
+) -> pd.DataFrame | pd.Series:
+    """Resample higher timeframe data to target frequency.
+
+    Args:
+        higher_tf_data: Data at higher timeframe (e.g., daily)
+        target_freq: Target frequency string (e.g., '1H', '15min', '30min')
+        method: Resampling method ('ffill', 'bfill', 'nearest')
+
+    Returns:
+        Resampled data aligned to target frequency
+    """
+    if isinstance(higher_tf_data, pd.Series):
+        # Resample Series
+        resampled = higher_tf_data.resample(target_freq).ffill()
+    else:
+        # Resample DataFrame
+        resampled = higher_tf_data.resample(target_freq).ffill()
+
+    return resampled
+
+
+def calculate_higher_tf_indicators(
+    close: pd.Series | pd.DataFrame, granularity: str = "ONE_DAY"
+) -> dict:
+    """Calculate higher timeframe indicators for trend filtering.
+
+    Args:
+        close: Price data at higher timeframe
+        granularity: Granularity name from config
+
+    Returns:
+        Dictionary with higher timeframe indicators
+    """
+    from ..indicators import calculate_rsi
+
+    # Convert to Series if DataFrame
+    if isinstance(close, pd.DataFrame):
+        if "close" in close.columns:
+            close = close["close"]
+        else:
+            close = close.iloc[:, 0]
+
+    # Calculate EMA trend (fast vs slow)
+    ema_fast = close.ewm(span=20).mean()
+    ema_slow = close.ewm(span=50).mean()
+    trend = ema_fast > ema_slow
+
+    # Calculate RSI
+    rsi = calculate_rsi(close, window=14)
+
+    return {"trend": trend, "ema_fast": ema_fast, "ema_slow": ema_slow, "rsi": rsi}
+
+
+def align_multi_tf_data(
+    lower_tf_close: pd.Series,
+    higher_tf_indicators: dict,
+    lower_tf_freq: str,
+) -> pd.DataFrame:
+    """Align higher timeframe indicators with lower timeframe data.
+
+    Args:
+        lower_tf_close: Price data at lower timeframe
+        higher_tf_indicators: Dictionary with higher timeframe indicators
+        lower_tf_freq: Lower timeframe frequency string
+
+    Returns:
+        Lower TF DataFrame with aligned higher TF indicators
+    """
+    result = pd.DataFrame(index=lower_tf_close.index, data={"close": lower_tf_close})
+
+    # Resample each higher TF indicator to lower TF frequency
+    for key, value in higher_tf_indicators.items():
+        if isinstance(value, (pd.Series, pd.DataFrame)):
+            # Resample and forward-fill to cover all lower TF bars
+            resampled = value.resample(lower_tf_freq).ffill()
+
+            # Align indices
+            resampled = resampled.reindex(lower_tf_close.index, method="ffill")
+            result[f"higher_{key}"] = resampled
+        else:
+            # Constant value, broadcast to all bars
+            result[f"higher_{key}"] = value
+
+    return result
+
+
+def fetch_multi_timeframe_data(
+    symbol: str = "BTC-USD",
+    start: str = "2024-01-01",
+    end: str = "2025-01-01",
+    granularities: list = None,
+) -> dict:
+    """Fetch price data for multiple timeframes simultaneously.
+
+    Args:
+        symbol: Trading symbol
+        start: Start date
+        end: End date
+        granularities: List of granularity names (default: ONE_DAY, FOUR_HOUR, ONE_HOUR)
+
+    Returns:
+        Dictionary with granularity as key and price data as value
+    """
+    if granularities is None:
+        granularities = ["ONE_DAY", "FOUR_HOUR", "ONE_HOUR"]
+
+    from .config import GRANULARITY_TO_FREQ
+
+    all_data = {}
+    for granularity in granularities:
+        freq = GRANULARITY_TO_FREQ[granularity]
+
+        try:
+            close = fetch_yahoo_data(symbol, start, end, freq)
+            all_data[granularity] = close
+            print(f"Fetched {granularity} data: {len(close)} bars")
+        except Exception as e:
+            print(f"Error fetching {granularity}: {e}")
+            all_data[granularity] = None
+
+    return all_data
+
+
+def fetch_live_higher_tf_data(
+    symbol: str = "BTC-USD", days: int = 100, higher_tf: str = "ONE_DAY"
+) -> dict:
+    """Fetch higher timeframe data for live trading signal filtering.
+
+    Args:
+        symbol: Trading symbol
+        days: Number of days of historical data to fetch
+        higher_tf: Higher timeframe granularity (default: ONE_DAY)
+
+    Returns:
+        Dictionary with higher_trend (bool) and higher_rsi (float)
+    """
+    from datetime import datetime, timedelta
+
+    from .config import GRANULARITY_TO_FREQ
+
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+
+    freq = GRANULARITY_TO_FREQ.get(higher_tf, "1d")
+
+    try:
+        higher_tf_close = fetch_yahoo_data(
+            symbol, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"), freq
+        )
+
+        if higher_tf_close is None or len(higher_tf_close) < 50:
+            print(f"Insufficient higher timeframe data for {higher_tf}")
+            return {"higher_trend": True, "higher_rsi": 50}
+
+        higher_tf_indicators = calculate_higher_tf_indicators(
+            higher_tf_close, higher_tf
+        )
+
+        higher_trend = bool(higher_tf_indicators["trend"].iloc[-1])
+        higher_rsi = higher_tf_indicators["rsi"].iloc[-1]
+
+        return {"higher_trend": higher_trend, "higher_rsi": higher_rsi}
+
+    except Exception as e:
+        print(f"Error fetching higher timeframe data: {e}")
+        return {"higher_trend": True, "higher_rsi": 50}

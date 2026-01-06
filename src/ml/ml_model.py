@@ -2,8 +2,11 @@
 Machine learning model for FGI prediction.
 """
 
+import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.model_selection import train_test_split
 
 from ..indicators import calculate_rsi
 
@@ -32,23 +35,69 @@ def prepare_ml_data(
 
 
 def train_ml_model(
-    daily_close: pd.Series, fgi_df: pd.DataFrame
-) -> tuple[RandomForestClassifier, pd.Series]:
-    """Train ML model on historical data."""
+    daily_close: pd.Series, fgi_df: pd.DataFrame, lookback_days: int = 180
+) -> tuple[RandomForestClassifier, pd.Series, dict]:
+    """Train ML model on historical data.
+
+    Args:
+        daily_close: Daily price data
+        fgi_df: Fear & Greed Index data
+        lookback_days: Number of days of recent data to use for training
+    """
     global ml_model, pred_series
 
     daily_rsi = calculate_rsi(daily_close)
     volume = daily_close * 0.01  # dummy volume
     ml_df = prepare_ml_data(daily_close, fgi_df, daily_rsi, volume)
-    features = ml_df[["fgi", "close", "rsi", "volume", "fgi_lag1"]]
-    target = ml_df["target"]
+
+    # Use only recent data for training (rolling window)
+    cutoff_date = ml_df.index.max() - pd.Timedelta(days=lookback_days)
+    ml_df_recent = ml_df[ml_df.index >= cutoff_date]
+
+    print(f"  Using data from {lookback_days} days ({len(ml_df_recent)} samples)")
+
+    features = ml_df_recent[["fgi", "close", "rsi", "volume", "fgi_lag1"]]
+    target = ml_df_recent["target"]
+
+    # Split into train (80%) and test (20%)
+    X_train, X_test, y_train, y_test = train_test_split(
+        features, target, test_size=0.2, random_state=42
+    )
+
+    # Create recency weights - recent data gets higher weight
+    sample_weights = np.linspace(0.5, 2.0, len(X_train))
 
     ml_model = RandomForestClassifier(n_estimators=100, random_state=42)
-    ml_model.fit(features, target)
-    pred_proba = ml_model.predict_proba(features)[:, 1]
+    ml_model.fit(X_train, y_train, sample_weight=sample_weights)
+
+    # Predictions for evaluation
+    y_pred = ml_model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, zero_division=0)
+    recall = recall_score(y_test, y_pred, zero_division=0)
+
+    metrics = {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "train_samples": len(X_train),
+        "test_samples": len(X_test),
+        "lookback_days": lookback_days,
+    }
+
+    print("  ML Model Performance:")
+    print(f"    Accuracy: {accuracy:.3f}")
+    print(f"    Precision: {precision:.3f}")
+    print(f"    Recall: {recall:.3f}")
+    print(f"    Train samples: {len(X_train)}, Test samples: {len(X_test)}")
+
+    # Predict on full dataset for backtesting
+    pred_proba = ml_model.predict_proba(
+        ml_df[["fgi", "close", "rsi", "volume", "fgi_lag1"]]
+    )[:, 1]
     pred_series = pd.Series(pred_proba, index=ml_df.index)
 
-    return ml_model, pred_series
+    return ml_model, pred_series, metrics
 
 
 def predict_live_fgi(

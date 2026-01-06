@@ -39,8 +39,11 @@ GRANULARITY_TO_FREQ = {
 }
 
 # Trading dates
-START_DATE = "2024-01-01"
+START_DATE = "2023-01-01"
 END_DATE = "2025-01-01"
+
+# ML training parameters
+ML_LOOKBACK_DAYS = 180  # Use only last N days for training
 
 # File paths
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

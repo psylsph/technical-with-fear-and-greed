@@ -10,7 +10,7 @@ from typing import Dict, Optional, Tuple
 import pandas as pd
 
 from ..config import BEST_PARAMS, PROJECT_ROOT, TEST_STATE_FILE
-from ..data.data_fetchers import get_current_price
+from ..data.data_fetchers import fetch_live_higher_tf_data, get_current_price
 from ..ml.ml_model import pred_series, predict_live_fgi
 from ..portfolio import load_test_state, save_test_state
 from ..strategy import generate_signal
@@ -100,6 +100,11 @@ def analyze_live_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
             live_pred = predict_live_fgi(close_series, fgi_df, today)
             pred_series = pd.Series([live_pred], index=[today])
 
+            # Fetch higher timeframe data for multi-TF filtering
+            higher_tf_data = fetch_live_higher_tf_data(
+                "BTC-USD", days=100, higher_tf="ONE_DAY"
+            )
+
             signal = generate_signal(
                 close_series,
                 fgi_df,
@@ -109,6 +114,8 @@ def analyze_live_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
                 sell_quantile=BEST_PARAMS["sell_quantile"],
                 ml_thresh=BEST_PARAMS["ml_thresh"],
                 pred_series=pred_series,
+                higher_tf_data=higher_tf_data,
+                enable_multi_tf=True,
             )
 
             return signal
@@ -139,6 +146,11 @@ def analyze_test_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
             live_pred = predict_live_fgi(close_series, fgi_df, today)
             pred_series = pd.Series([live_pred], index=[today])
 
+            # Fetch higher timeframe data for multi-TF filtering
+            higher_tf_data = fetch_live_higher_tf_data(
+                "BTC-USD", days=100, higher_tf="ONE_DAY"
+            )
+
             signal = generate_signal(
                 close_series,
                 fgi_df,
@@ -148,6 +160,8 @@ def analyze_test_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
                 sell_quantile=BEST_PARAMS["sell_quantile"],
                 ml_thresh=BEST_PARAMS["ml_thresh"],
                 pred_series=pred_series,
+                higher_tf_data=higher_tf_data,
+                enable_multi_tf=True,
             )
             return signal
         finally:
@@ -303,6 +317,13 @@ def run_test_trading(fgi_df: pd.DataFrame):
                     print(
                         f"  ML: {ind.get('ml_pred', 0):.2f} (>{ind.get('ml_thresh', 0):.2f})"
                     )
+                    if ind.get("multi_tf_enabled"):
+                        higher_trend = ind.get("higher_trend", True)
+                        higher_rsi = ind.get("higher_rsi", 50)
+                        trend_str = "BULLISH" if higher_trend else "BEARISH"
+                        print(
+                            f"  Higher TF (Daily): {trend_str}, RSI: {higher_rsi:.1f}"
+                        )
                     print(f"  Signal: {signal_info['signal'].upper()}")
 
                     action, qty = should_trade_test(
@@ -437,6 +458,13 @@ def run_live_trading(fgi_df: pd.DataFrame):
                         print(
                             f"  ML: {ind.get('ml_pred', 0):.2f} (>{ind.get('ml_thresh', 0):.2f})"
                         )
+                        if ind.get("multi_tf_enabled"):
+                            higher_trend = ind.get("higher_trend", True)
+                            higher_rsi = ind.get("higher_rsi", 50)
+                            trend_str = "BULLISH" if higher_trend else "BEARISH"
+                            print(
+                                f"  Higher TF (Daily): {trend_str}, RSI: {higher_rsi:.1f}"
+                            )
                         print(f"  Signal: {signal_info['signal'].upper()}")
 
                         action, qty = should_trade(
