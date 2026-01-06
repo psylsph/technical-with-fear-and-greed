@@ -486,45 +486,45 @@ if not args.live:
     results = []
 
     for granularity in GRANULARITIES_TO_TEST:
-    print(f"\n{'=' * 60}")
-    print(f"Testing {granularity} ({GRANULARITY_TO_FREQ[granularity]})")
-    print(f"{'=' * 60}")
+        print(f"\n{'=' * 60}")
+        print(f"Testing {granularity} ({GRANULARITY_TO_FREQ[granularity]})")
+        print(f"{'=' * 60}")
 
-    close = None
-    freq = GRANULARITY_TO_FREQ[granularity]
-    data_source = "Unknown"
+        close = None
+        freq = GRANULARITY_TO_FREQ[granularity]
+        data_source = "Unknown"
 
-    yf_interval = GRANULARITY_TO_FREQ[granularity]
-    try:
+        yf_interval = GRANULARITY_TO_FREQ[granularity]
         try:
-            with open('cdp_api_key.json', 'r') as f:
-                cdp_keys = json.load(f)
-            coinbase_api_key = cdp_keys['name']
-            coinbase_secret = cdp_keys['privateKey']
-            os.environ['COINBASE_API_KEY'] = coinbase_api_key
-            os.environ['COINBASE_SECRET_KEY'] = coinbase_secret
-            print("Using Coinbase...")
-            close = fetch_coinbase_historical("BTC-USD", START_DATE + "T00:00:00Z", END_DATE + "T00:00:00Z", granularity.upper())
-            if isinstance(close, pd.DataFrame):
-                close = close['close']
-            data_source = "Coinbase"
+            try:
+                with open('cdp_api_key.json', 'r') as f:
+                    cdp_keys = json.load(f)
+                coinbase_api_key = cdp_keys['name']
+                coinbase_secret = cdp_keys['privateKey']
+                os.environ['COINBASE_API_KEY'] = coinbase_api_key
+                os.environ['COINBASE_SECRET_KEY'] = coinbase_secret
+                print("Using Coinbase...")
+                close = fetch_coinbase_historical("BTC-USD", START_DATE + "T00:00:00Z", END_DATE + "T00:00:00Z", granularity.upper())
+                if isinstance(close, pd.DataFrame):
+                    close = close['close']
+                data_source = "Coinbase"
+            except Exception as e:
+                print(f"Coinbase setup error: {e}, using Yahoo Finance...")
+                close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, yf_interval)
+                data_source = "Yahoo Finance"
         except Exception as e:
-            print(f"Coinbase setup error: {e}, using Yahoo Finance...")
-            close = fetch_yahoo_data("BTC-USD", START_DATE, END_DATE, yf_interval)
-            data_source = "Yahoo Finance"
-    except Exception as e:
-        print(f"Data fetch error: {e}")
-        continue
+            print(f"Data fetch error: {e}")
+            continue
 
-    if close is None or len(close) < 10:
-        print(f"Insufficient data for {granularity}")
-        continue
+        if close is None or len(close) < 10:
+            print(f"Insufficient data for {granularity}")
+            continue
 
-    print(f"Data source: {data_source}")
-    print(f"Total bars: {len(close)}")
+        print(f"Data source: {data_source}")
+        print(f"Total bars: {len(close)}")
 
-    result = run_strategy(close, freq, fgi_df, granularity)
-    results.append(result)
+        result = run_strategy(close, freq, fgi_df, granularity)
+        results.append(result)
 
 print(f"\n{'=' * 80}")
 print("SUMMARY: Performance by Timeframe")
