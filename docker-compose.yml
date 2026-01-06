@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  trading-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: technical-trading
+    volumes:
+      - ./src:/app/src
+      - ./main.py:/app/main.py
+      - ./.env:/app/.env
+      - ./cdp_api_key.json:/app/cdp_api_key.json
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+    command: python main.py --test
