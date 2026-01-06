@@ -219,7 +219,20 @@ class TestMLModel(unittest.TestCase):
     def setUp(self):
         """Set up test data."""
         dates = pd.date_range("2023-01-01", periods=50)
-        self.prices = pd.Series([100 + i for i in range(50)], index=dates)
+        prices = [100 + i for i in range(50)]
+        self.prices = pd.Series(prices, index=dates)
+
+        self.ohlcv = pd.DataFrame(
+            {
+                "open": prices,
+                "high": [p + 0.5 for p in prices],
+                "low": [p - 0.5 for p in prices],
+                "close": prices,
+                "volume": [1000 + i * 10 for i in range(50)],
+            },
+            index=dates,
+        )
+
         self.fgi = pd.DataFrame(
             {
                 "fgi_value": [50 + i % 20 for i in range(50)],
@@ -246,16 +259,17 @@ class TestMLModel(unittest.TestCase):
         from src.ml.ml_model import train_ml_model
 
         model, predictions, metrics = train_ml_model(
-            self.prices, self.fgi, lookback_days=30
+            self.ohlcv, self.fgi, lookback_days=30
         )
 
         self.assertIsNotNone(model)
         self.assertIsInstance(predictions, pd.Series)
-        # Length matches prepare_ml_data output
-        self.assertEqual(len(predictions), len(self.prices) - 13)
+        # With lookback_days=30, we should have 20 samples (30 - 10 buffer)
+        self.assertEqual(len(predictions), 20)
         self.assertIsInstance(metrics, dict)
         self.assertIn("accuracy", metrics)
         self.assertIn("lookback_days", metrics)
+        self.assertIn("features", metrics)
 
     def test_predict_live_fgi_no_model(self):
         """Test live FGI prediction when model is not trained."""
@@ -268,7 +282,17 @@ class TestMLModel(unittest.TestCase):
         # Test prediction
         today = pd.Timestamp.now().normalize()
         test_price = pd.Series([150.0], index=[today])
-        prediction = predict_live_fgi(test_price, self.fgi, today)
+        test_ohlcv = pd.DataFrame(
+            {
+                "open": [150.0],
+                "high": [150.5],
+                "low": [149.5],
+                "close": [150.0],
+                "volume": [1000],
+            },
+            index=[today],
+        )
+        prediction = predict_live_fgi(test_ohlcv, self.fgi, today)
 
         # Should return default (0.5)
         self.assertEqual(prediction, 0.5)
@@ -281,12 +305,21 @@ class TestMLModel(unittest.TestCase):
         from src.ml.ml_model import predict_live_fgi, train_ml_model
 
         # Train model first
-        train_ml_model(self.prices, self.fgi, lookback_days=30)
+        train_ml_model(self.ohlcv, self.fgi, lookback_days=30)
 
         # Test with date that won't exist in FGI data
         future_date = pd.Timestamp("2030-01-01")
-        test_price = pd.Series([150.0], index=[future_date])
-        prediction = predict_live_fgi(test_price, self.fgi, future_date)
+        test_ohlcv = pd.DataFrame(
+            {
+                "open": [150.0],
+                "high": [150.5],
+                "low": [149.5],
+                "close": [150.0],
+                "volume": [1000],
+            },
+            index=[future_date],
+        )
+        prediction = predict_live_fgi(test_ohlcv, self.fgi, future_date)
 
         # Should return default
         self.assertEqual(prediction, 0.5)
@@ -296,12 +329,22 @@ class TestMLModel(unittest.TestCase):
         from src.ml.ml_model import predict_live_fgi, train_ml_model
 
         # Train model first
-        train_ml_model(self.prices, self.fgi, lookback_days=30)
+        train_ml_model(self.ohlcv, self.fgi, lookback_days=30)
 
         # Test with insufficient price data (less than 14 for RSI)
         short_price = pd.Series([150.0])
+        short_ohlcv = pd.DataFrame(
+            {
+                "open": [150.0],
+                "high": [150.5],
+                "low": [149.5],
+                "close": [150.0],
+                "volume": [1000],
+            },
+            index=short_price.index,
+        )
         today = pd.Timestamp.now().normalize()
-        prediction = predict_live_fgi(short_price, self.fgi, today)
+        prediction = predict_live_fgi(short_ohlcv, self.fgi, today)
 
         # Should handle insufficient data gracefully
         self.assertIsInstance(prediction, float)
@@ -813,9 +856,21 @@ class TestIntegration(unittest.TestCase):
     def test_strategy_with_ml(self):
         """Test strategy with ML predictions."""
         # Create test data
-        prices = pd.Series(
-            [100 + i for i in range(30)], index=pd.date_range("2023-01-01", periods=30)
+        dates = pd.date_range("2023-01-01", periods=30)
+        prices = [100 + i for i in range(30)]
+        prices_series = pd.Series(prices, index=dates)
+
+        ohlcv = pd.DataFrame(
+            {
+                "open": prices,
+                "high": [p + 0.5 for p in prices],
+                "low": [p - 0.5 for p in prices],
+                "close": prices,
+                "volume": [1000 + i * 10 for i in range(30)],
+            },
+            index=dates,
         )
+
         fgi = pd.DataFrame(
             {
                 "fgi_value": [40 + i for i in range(30)],
@@ -827,10 +882,10 @@ class TestIntegration(unittest.TestCase):
         # Train ML model
         from src.ml.ml_model import train_ml_model
 
-        model, pred_series, _ = train_ml_model(prices, fgi, lookback_days=30)
+        model, pred_series, _ = train_ml_model(ohlcv, fgi, lookback_days=30)
 
         # Test strategy with ML
-        result = run_strategy(prices, "1d", fgi, "TEST", pred_series=pred_series)
+        result = run_strategy(prices_series, "1d", fgi, "TEST", pred_series=pred_series)
 
         self.assertIn("total_return", result)
         self.assertIsInstance(result["total_return"], (int, float))

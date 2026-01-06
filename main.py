@@ -118,11 +118,12 @@ def run_backtesting(fgi_df: pd.DataFrame):
     # Train ML model with automated lookback optimization
     print("\nTraining ML Model (testing 90, 180, 365 day lookback periods)...")
     daily_ohlcv = fetch_unified_price_data("BTC-USD", START_DATE, END_DATE, "1d")
-    daily_close = daily_ohlcv["close"] if daily_ohlcv is not None else None
 
-    if daily_close is None:
+    if daily_ohlcv is None or len(daily_ohlcv) < 30:
         print("Failed to fetch data for ML training")
         return
+
+    daily_close = daily_ohlcv["close"]
 
     lookback_periods = [90, 180, 365]
     best_lookback = None
@@ -132,7 +133,7 @@ def run_backtesting(fgi_df: pd.DataFrame):
     for lookback in lookback_periods:
         print(f"\n  Testing {lookback}-day lookback...")
         model, pred_series, metrics = train_ml_model(
-            daily_close, fgi_df, lookback_days=lookback
+            daily_ohlcv, fgi_df, lookback_days=lookback
         )
 
         # Quick backtest with default params to evaluate this lookback period
