@@ -1,0 +1,495 @@
+"""
+Data fetching utilities with SQLite caching for market data and external APIs.
+"""
+
+import json
+import os
+import sqlite3
+import time
+import urllib.request
+from datetime import datetime, timedelta
+from typing import Optional
+
+import pandas as pd
+import requests
+import vectorbt as vbt
+import yfinance as yf
+
+from ..config import CACHE_DIR, CDP_KEY_FILE, GRANULARITY_TO_SECONDS
+
+
+def init_database():
+    """Initialize SQLite database for data caching."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    db_path = os.path.join(CACHE_DIR, "market_data.db")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Create tables
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ohlcv_data (
+            symbol TEXT,
+            timestamp INTEGER,
+            open REAL,
+            high REAL,
+            low REAL,
+            close REAL,
+            volume REAL,
+            source TEXT,
+            granularity TEXT,
+            PRIMARY KEY (symbol, timestamp, granularity)
+        )
+    """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fgi_data (
+            date TEXT PRIMARY KEY,
+            fgi_value INTEGER,
+            fgi_classification TEXT
+        )
+    """
+    )
+
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+def get_cached_data(
+    symbol: str, start_date: str, end_date: str, granularity: str, source: str
+) -> Optional[pd.DataFrame]:
+    """Get cached data from SQLite database."""
+    db_path = init_database()
+    conn = sqlite3.connect(db_path)
+
+    try:
+        # Convert dates to timestamps
+        start_ts = int(pd.Timestamp(start_date).timestamp())
+        end_ts = int(pd.Timestamp(end_date).timestamp())
+
+        query = """
+            SELECT timestamp, open, high, low, close, volume
+            FROM ohlcv_data
+            WHERE symbol = ? AND timestamp >= ? AND timestamp <= ? AND granularity = ? AND source = ?
+            ORDER BY timestamp
+        """
+
+        df = pd.read_sql_query(
+            query, conn, params=[symbol, start_ts, end_ts, granularity, source]
+        )
+
+        if len(df) == 0:
+            return None
+
+        # Convert timestamp back to datetime
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+        df.set_index("timestamp", inplace=True)
+        df = df.rename(columns={"close": "close"})
+
+        return df
+
+    except Exception as e:
+        print(f"Error reading cached data: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def save_cached_data(symbol: str, df: pd.DataFrame, granularity: str, source: str):
+    """Save data to SQLite cache."""
+    if df is None or len(df) == 0:
+        return
+
+    db_path = init_database()
+    conn = sqlite3.connect(db_path)
+
+    try:
+        # Prepare data for insertion
+        data_to_insert = []
+        for timestamp, row in df.iterrows():
+            ts = int(timestamp.timestamp())
+            data_to_insert.append(
+                (
+                    symbol,
+                    ts,
+                    float(row["open"]) if "open" in row else float(row["close"]),
+                    float(row["high"]) if "high" in row else float(row["close"]),
+                    float(row["low"]) if "low" in row else float(row["close"]),
+                    float(row["close"]),
+                    float(row["volume"]) if "volume" in row else 0.0,
+                    source,
+                    granularity,
+                )
+            )
+
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT OR REPLACE INTO ohlcv_data
+            (symbol, timestamp, open, high, low, close, volume, source, granularity)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            data_to_insert,
+        )
+
+        conn.commit()
+        print(
+            f"Cached {len(data_to_insert)} records for {symbol} ({granularity}) from {source}"
+        )
+
+    except Exception as e:
+        print(f"Error saving cached data: {e}")
+    finally:
+        conn.close()
+
+
+def get_cached_fgi(start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+    """Get cached FGI data from SQLite database."""
+    db_path = init_database()
+    conn = sqlite3.connect(db_path)
+
+    try:
+        query = """
+            SELECT date, fgi_value, fgi_classification
+            FROM fgi_data
+            WHERE date >= ? AND date <= ?
+            ORDER BY date
+        """
+
+        df = pd.read_sql_query(query, conn, params=[start_date, end_date])
+
+        if len(df) == 0:
+            return None
+
+        df.set_index("date", inplace=True)
+        df.index = pd.to_datetime(df.index).tz_localize("UTC")
+        return df
+
+    except Exception as e:
+        print(f"Error reading cached FGI data: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def save_cached_fgi(fgi_df: pd.DataFrame):
+    """Save FGI data to SQLite cache."""
+    if fgi_df is None or len(fgi_df) == 0:
+        return
+
+    db_path = init_database()
+    conn = sqlite3.connect(db_path)
+
+    try:
+        data_to_insert = []
+        for date, row in fgi_df.iterrows():
+            date_str = date.strftime("%Y-%m-%d")
+            data_to_insert.append(
+                (date_str, int(row["fgi_value"]), row["fgi_classification"])
+            )
+
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT OR REPLACE INTO fgi_data
+            (date, fgi_value, fgi_classification)
+            VALUES (?, ?, ?)
+        """,
+            data_to_insert,
+        )
+
+        conn.commit()
+        print(f"Cached {len(data_to_insert)} FGI records")
+
+    except Exception as e:
+        print(f"Error saving cached FGI data: {e}")
+    finally:
+        conn.close()
+
+
+def load_cdp_credentials() -> tuple[str, str] | None:
+    """Load CDP API credentials from JSON file."""
+    if not os.path.exists(CDP_KEY_FILE):
+        return None
+
+    try:
+        with open(CDP_KEY_FILE) as f:
+            creds = json.load(f)
+
+        private_key = creds.get("privateKey", "")
+        private_key = private_key.replace("\\n", "\n")
+
+        name = creds.get("name", "")
+
+        api_key_id = name.split("/")[-1] if "/" in name else ""
+
+        return api_key_id, private_key
+    except Exception as e:
+        print(f"Error loading CDP credentials: {e}")
+        return None
+
+
+def generate_jwt(api_key_id: str, private_key: str, uri: str | None = None) -> str:
+    """Generate JWT token for Coinbase API authentication."""
+    import jwt
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
+
+    private_key_obj = serialization.load_pem_private_key(
+        private_key.encode(), password=None, backend=default_backend()
+    )
+
+    payload = {
+        "sub": api_key_id,
+        "iss": "cdp",
+        "nbf": int(time.time()),
+        "exp": int(time.time()) + 120,
+    }
+
+    if uri:
+        payload["uri"] = uri
+
+    nonce = os.urandom(8).hex()
+
+    token = jwt.encode(
+        payload,
+        private_key_obj,
+        algorithm="ES256",
+        headers={"kid": api_key_id, "nonce": nonce},
+    )
+
+    return token
+
+
+def fetch_coinbase_historical(
+    product_id: str = "BTC-USD",
+    start: str = "2025-01-01T00:00:00Z",
+    end: str = "2026-01-04T00:00:00Z",
+    granularity: str = "FIFTEEN_MINUTE",
+    use_cache: bool = True,
+    cache_hours: int = 24,
+) -> pd.DataFrame | None:
+    """Fetch historical candles using Coinbase Advanced Trade API with SQLite caching."""
+    # Check cache first
+    if use_cache:
+        cached_data = get_cached_data(product_id, start, end, granularity, "coinbase")
+        if cached_data is not None:
+            print(f"Using cached Coinbase data ({len(cached_data)} bars)")
+            return cached_data
+
+    creds = load_cdp_credentials()
+    if not creds:
+        return None
+
+    api_key_id, private_key = creds
+
+    try:
+        # Import Coinbase client with error handling
+        try:
+            from coinbase.rest import RESTClient
+        except ImportError as ie:
+            print(f"Coinbase import error: {ie}")
+            return None
+
+        client = RESTClient(api_key=api_key_id, api_secret=private_key)
+
+        start_ts = int(datetime.fromisoformat(start.replace("Z", "+00:00")).timestamp())
+        end_ts = int(datetime.fromisoformat(end.replace("Z", "+00:00")).timestamp())
+
+        all_candles = []
+        max_candles = 349
+        chunk_count = 0
+
+        granularity_seconds = GRANULARITY_TO_SECONDS[granularity]
+
+        current_start = end_ts - (max_candles * granularity_seconds)
+
+        while current_start >= start_ts:
+            chunk_count += 1
+
+            interval_end = min(
+                current_start + (max_candles * granularity_seconds), end_ts
+            )
+
+            candles = client.get_candles(
+                product_id=product_id,
+                start=str(current_start),
+                end=str(interval_end),
+                granularity=granularity,
+            )
+
+            if not candles or not candles.candles:
+                print(f"No candles in response for chunk {chunk_count}")
+                break
+
+            chunk_size = len(candles.candles)
+
+            for candle in candles.candles:
+                all_candles.append(
+                    {
+                        "time": int(candle.start),
+                        "low": float(candle.low),
+                        "high": float(candle.high),
+                        "open": float(candle.open),
+                        "close": float(candle.close),
+                        "volume": float(candle.volume),
+                    }
+                )
+
+            print(
+                f"Chunk {chunk_count}: fetched {chunk_size} candles (total: {len(all_candles)})"
+            )
+
+            if chunk_size < max_candles:
+                break
+
+            current_start = current_start - granularity_seconds
+
+            if chunk_count > 400:
+                print("Reached maximum chunk limit")
+                break
+
+            time.sleep(0.3)
+
+        if not all_candles:
+            print("No candles fetched from Coinbase API")
+            return None
+
+        df = pd.DataFrame(all_candles)
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        df.set_index("time", inplace=True)
+        df = df.sort_index()
+
+        # Cache the data
+        save_cached_data(product_id, df, granularity, "coinbase")
+
+        print(f"Total: {len(df)} candles from Coinbase in {chunk_count} chunks")
+        return df
+
+    except Exception as e:
+        print(f"Coinbase API error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return None
+
+
+def fetch_fear_greed_index(limit: int = 730) -> pd.DataFrame:
+    """Fetch historical Fear and Greed Index data from alternative.me API with caching."""
+    # Check cache first
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=limit)).strftime("%Y-%m-%d")
+
+    cached_data = get_cached_fgi(start_date, end_date)
+    if (
+        cached_data is not None and len(cached_data) >= limit * 0.9
+    ):  # 90% of requested data
+        print(f"Using cached FGI data ({len(cached_data)} days)")
+        return cached_data
+
+    url = f"https://api.alternative.me/fng/?limit={limit}&date_format=us"
+    with urllib.request.urlopen(url) as response:
+        data = json.loads(response.read().decode())
+
+    records = []
+    for item in data["data"]:
+        date = pd.to_datetime(item["timestamp"], format="%m-%d-%Y")
+        records.append(
+            {
+                "date": date,
+                "fgi_value": int(item["value"]),
+                "fgi_classification": item["value_classification"],
+            }
+        )
+
+    fgi_df = pd.DataFrame(records)
+    fgi_df.set_index("date", inplace=True)
+    fgi_df.index = pd.to_datetime(fgi_df.index).tz_localize("UTC")
+
+    # Cache the data
+    save_cached_fgi(fgi_df)
+
+    return fgi_df.sort_index()
+
+
+def get_current_fgi() -> int:
+    """Fetch current Fear & Greed Index."""
+    url = "https://api.alternative.me/fng/?limit=1"
+    response = requests.get(url)
+    data = response.json()
+    return int(data["data"][0]["value"])
+
+
+def get_current_price(symbol: str) -> Optional[float]:
+    """Fetch current price using yfinance."""
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period="1d")
+    return hist["Close"].iloc[-1] if not hist.empty else None
+
+
+def fetch_yahoo_data(symbol: str, start: str, end: str, interval: str) -> pd.Series:
+    """Fetch data from Yahoo Finance with SQLite caching and date range handling."""
+    # Check cache first
+    cached_data = get_cached_data(symbol, start, end, interval, "yahoo")
+    if cached_data is not None:
+        print(f"Using cached Yahoo data ({len(cached_data)} bars)")
+        return cached_data["close"]
+
+    # Handle Yahoo's date limitations
+    start_date = pd.Timestamp(start)
+    end_date = pd.Timestamp(end)
+    now = pd.Timestamp.now()
+
+    # Yahoo limits:
+    # - 1h data: max 730 days back
+    # - Other intervals: vary
+
+    if interval == "1h":
+        max_days_back = 730
+    elif interval in ["1d", "1wk", "1mo"]:
+        max_days_back = 365 * 10  # Roughly 10 years
+    else:
+        max_days_back = 365 * 2  # 2 years for other intervals
+
+    days_requested = (end_date - start_date).days
+    if days_requested > max_days_back:
+        print(f"Yahoo {interval} data limited to {max_days_back} days back")
+        adjusted_start = max(start_date, now - pd.Timedelta(days=max_days_back))
+        print(
+            f"Adjusting start date from {start_date.date()} to {adjusted_start.date()}"
+        )
+        start = adjusted_start.strftime("%Y-%m-%d")
+
+    try:
+        data = vbt.YFData.download(symbol, start=start, end=end, interval=interval)
+        close_data = data.get("Close")
+        if isinstance(close_data, tuple):
+            close_series = close_data[0]
+        else:
+            close_series = close_data
+        if hasattr(close_series, "Close"):
+            close_series = close_series.Close
+
+        if close_series is None or len(close_series) == 0:
+            raise ValueError(f"No data returned for {symbol}")
+
+        # Convert to DataFrame format for caching
+        df_cache = pd.DataFrame(index=close_series.index)
+        df_cache["close"] = close_series
+        df_cache["open"] = close_series  # Dummy values
+        df_cache["high"] = close_series
+        df_cache["low"] = close_series
+        df_cache["volume"] = 0.0
+
+        # Cache the data
+        save_cached_data(symbol, df_cache, interval, "yahoo")
+
+        return close_series
+
+    except Exception as e:
+        print(f"Yahoo Finance error for {symbol}: {e}")
+        raise

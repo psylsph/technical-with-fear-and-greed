@@ -1,0 +1,500 @@
+"""
+Live and test trading engine.
+"""
+
+import json
+import os
+from datetime import datetime
+from typing import Dict, Optional, Tuple
+
+import pandas as pd
+
+from ..config import BEST_PARAMS, PROJECT_ROOT, TEST_STATE_FILE
+from ..data.data_fetchers import get_current_price
+from ..ml.ml_model import pred_series, predict_live_fgi
+from ..portfolio import load_test_state, save_test_state
+from ..strategy import generate_signal
+
+# Alpaca trading imports (for live trading functionality)
+try:
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.requests import MarketOrderRequest
+
+    ALPACA_AVAILABLE = True
+except ImportError:
+    ALPACA_AVAILABLE = False
+    print("Note: alpaca-py not installed. Live trading features disabled.")
+
+
+def execute_trade(
+    symbol: str, side: str, qty: float, trading_client=None
+) -> Optional[object]:
+    """Execute trade via Alpaca."""
+    if not ALPACA_AVAILABLE or trading_client is None:
+        print(
+            f"Trade execution disabled (Alpaca not configured): {side} {qty} {symbol}"
+        )
+        return None
+
+    side_enum = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+
+    order_data = MarketOrderRequest(
+        symbol=symbol,
+        qty=qty,
+        side=side_enum,
+        type="market",
+        time_in_force=TimeInForce.DAY,
+    )
+    try:
+        order = trading_client.submit_order(order_data)
+        print(f"Order submitted: {order.id} - {side.upper()} {qty} {symbol}")
+        return order
+    except Exception as e:
+        print(f"Order failed: {e}")
+        return None
+
+
+def get_position(qsymbol: str, trading_client) -> float:
+    """Get current position for a symbol."""
+    try:
+        positions = trading_client.get_all_positions()
+        pos = next((p for p in positions if p.symbol == qsymbol), None)
+        return float(pos.qty) if pos else 0.0
+    except Exception as e:
+        print(f"Error getting position: {e}")
+        return 0.0
+
+
+def get_account_info(trading_client) -> Optional[Dict]:
+    """Get account information."""
+    try:
+        account = trading_client.get_account()
+        return {
+            "cash": float(account.cash),
+            "equity": float(account.equity),
+            "buying_power": float(account.buying_power),
+        }
+    except Exception as e:
+        print(f"Error getting account: {e}")
+        return None
+
+
+def analyze_live_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
+    """Analyze current market using the optimized strategy from backtesting."""
+    try:
+        current_close = get_current_price("BTC-USD")
+
+        if current_close is None:
+            return None
+
+        close_series = pd.Series([current_close], index=[pd.Timestamp.now(tz="UTC")])
+
+        # Override pred_series with live prediction for today
+        today = pd.Timestamp.now().normalize()
+        global pred_series
+        original_pred_series = pred_series
+
+        try:
+            # Make live prediction for today
+            live_pred = predict_live_fgi(close_series, fgi_df, today)
+            pred_series = pd.Series([live_pred], index=[today])
+
+            signal = generate_signal(
+                close_series,
+                fgi_df,
+                rsi_window=BEST_PARAMS["rsi_window"],
+                trail_pct=BEST_PARAMS["trail_pct"],
+                buy_quantile=BEST_PARAMS["buy_quantile"],
+                sell_quantile=BEST_PARAMS["sell_quantile"],
+                ml_thresh=BEST_PARAMS["ml_thresh"],
+                pred_series=pred_series,
+            )
+
+            return signal
+        finally:
+            # Restore original pred_series
+            pred_series = original_pred_series
+
+    except Exception as e:
+        print(f"Error analyzing signal: {e}")
+        return None
+
+
+def analyze_test_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
+    """Analyze current market using the optimized strategy from backtesting."""
+    try:
+        current_close = get_current_price("BTC-USD")
+        if current_close is None:
+            return None
+        close_series = pd.Series([current_close], index=[pd.Timestamp.now(tz="UTC")])
+
+        # Override pred_series with live prediction for today
+        today = pd.Timestamp.now().normalize()
+        global pred_series
+        original_pred_series = pred_series
+
+        try:
+            # Make live prediction for today
+            live_pred = predict_live_fgi(close_series, fgi_df, today)
+            pred_series = pd.Series([live_pred], index=[today])
+
+            signal = generate_signal(
+                close_series,
+                fgi_df,
+                rsi_window=BEST_PARAMS["rsi_window"],
+                trail_pct=BEST_PARAMS["trail_pct"],
+                buy_quantile=BEST_PARAMS["buy_quantile"],
+                sell_quantile=BEST_PARAMS["sell_quantile"],
+                ml_thresh=BEST_PARAMS["ml_thresh"],
+                pred_series=pred_series,
+            )
+            return signal
+        finally:
+            # Restore original pred_series
+            pred_series = original_pred_series
+
+    except Exception as e:
+        print(f"Error analyzing signal: {e}")
+        return None
+
+
+def should_trade(
+    signal_info: dict,
+    current_position: float,
+    is_live: bool = False,
+    account_info: Optional[Dict] = None,
+) -> Tuple[str, float]:
+    """Determine if a trade should be executed."""
+    signal = signal_info.get("signal", "hold")
+    price = signal_info.get("indicators", {}).get("price", 0)
+
+    if signal == "buy" and current_position == 0:
+        if is_live and account_info:
+            max_position_value = account_info["equity"] * 0.10
+        else:
+            # Test mode - use portfolio cash
+            max_position_value = (
+                account_info.get("cash", 1000) * 0.10 if account_info else 100.0
+            )
+
+        quantity = (max_position_value / price) * 0.95
+        quantity = round(quantity, 6)
+        return ("buy", max(quantity, 0.0001))
+
+    elif signal == "sell" and current_position > 0:
+        return ("sell", current_position)
+
+    return ("hold", 0.0)
+
+
+def should_trade_test(signal_info: dict, current_btc: float) -> Tuple[str, float]:
+    """Determine if a trade should be executed in test mode."""
+    signal = signal_info.get("signal", "hold")
+    price = signal_info.get("indicators", {}).get("price", 0)
+
+    if signal == "buy" and current_btc == 0:
+        # Load current portfolio state to get cash
+        portfolio_state = load_test_state()
+        max_position_value = portfolio_state["cash"] * 0.10
+        quantity = (max_position_value / price) * 0.95
+        quantity = round(quantity, 6)
+        return ("buy", max(quantity, 0.0001))
+    elif signal == "sell" and current_btc > 0:
+        return ("sell", current_btc)
+    return ("hold", 0.0)
+
+
+def log_trade(
+    signal_info: dict, action: str, quantity: float, order_id: str = None
+) -> None:
+    """Log trade to file."""
+    try:
+        indicators = signal_info.get("indicators", {})
+        timestamp = datetime.now().isoformat()
+        log_entry = {
+            "timestamp": timestamp,
+            "symbol": "BTC/USD",
+            "action": action,
+            "quantity": quantity,
+            "price": indicators.get("price", 0),
+            "fgi": indicators.get("fgi", 0),
+            "rsi": indicators.get("rsi", 0),
+            "ml_pred": indicators.get("ml_pred", 0),
+            "order_id": order_id,
+        }
+        log_file = os.path.join(PROJECT_ROOT, "trade_log.json")
+        logs = []
+        if os.path.exists(log_file):
+            with open(log_file) as f:
+                logs = json.load(f)
+        logs.append(log_entry)
+        with open(log_file, "w") as f:
+            json.dump(logs, f, indent=2)
+    except Exception as e:
+        print(f"Error logging trade: {e}")
+
+
+def run_test_trading(fgi_df: pd.DataFrame):
+    """Run test trading mode."""
+    print("\n" + "=" * 60)
+    print("TEST MODE (Simulated Live Trading)")
+    print("=" * 60)
+
+    SYMBOL = "BTC/USD"
+    CHECK_INTERVAL = 300
+
+    portfolio_state = load_test_state()
+
+    if portfolio_state["initialized"]:
+        print("Resuming test session from saved state:")
+        print(f"  Cash: ${portfolio_state['cash']:.2f}")
+        print(f"  BTC Held: {portfolio_state['btc_held']:.6f}")
+        print(f"  Previous Trades: {len(portfolio_state['trades'])}")
+    else:
+        print("Starting new test session:")
+        print(f"  Initial Cash: ${portfolio_state['cash']:.2f}")
+        portfolio_state["initialized"] = True
+        save_test_state(portfolio_state)
+
+    from ..portfolio import get_test_portfolio_value
+
+    print("\nUsing optimized strategy parameters:")
+    print(f"  RSI Window: {BEST_PARAMS['rsi_window']}")
+    print(f"  Trail %: {BEST_PARAMS['trail_pct']}")
+    print(f"  Buy Quantile: {BEST_PARAMS['buy_quantile']}")
+    print(f"  Sell Quantile: {BEST_PARAMS['sell_quantile']}")
+    print(f"  ML Threshold: {BEST_PARAMS['ml_thresh']}")
+    print(f"\nStarting test trading monitor for {SYMBOL}")
+    print(f"Check interval: {CHECK_INTERVAL} seconds")
+    print("Press Ctrl+C to stop")
+    print("State will be saved to: test_portfolio_state.json")
+    print("-" * 60)
+
+    try:
+        while True:
+            try:
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n[{now}] Checking signal...")
+
+                current_price = get_current_price("BTC-USD")
+                if current_price is None:
+                    print("  Could not fetch current price")
+                    import time
+
+                    time.sleep(60)
+                    continue
+
+                portfolio_value = get_test_portfolio_value(
+                    portfolio_state, current_price
+                )
+                print(
+                    f"  Portfolio: ${portfolio_value:.2f} ({portfolio_state['cash']:.2f} cash + {portfolio_state['btc_held']:.6f} BTC @ ${current_price:,.2f})"
+                )
+
+                signal_info = analyze_test_signal(fgi_df)
+                if signal_info and "indicators" in signal_info:
+                    ind = signal_info["indicators"]
+                    print(f"  BTC: ${ind.get('price', 0):,.2f}")
+                    print(
+                        f"  FGI: {ind.get('fgi', 0)} (buy<= {ind.get('fgi_buy_thresh', 0):.0f}, sell>= {ind.get('fgi_sell_thresh', 0):.0f})"
+                    )
+                    print(f"  RSI: {ind.get('rsi', 0):.1f} (buy<30, sell>70)")
+                    print(
+                        f"  ML: {ind.get('ml_pred', 0):.2f} (>{ind.get('ml_thresh', 0):.2f})"
+                    )
+                    print(f"  Signal: {signal_info['signal'].upper()}")
+
+                    action, qty = should_trade_test(
+                        signal_info, portfolio_state["btc_held"]
+                    )
+
+                    if action != "hold":
+                        print(
+                            f"\n  >>> SIMULATED TRADE: {action.upper()} {qty:.6f} {SYMBOL} <<<"
+                        )
+                        from ..portfolio import simulate_trade
+
+                        portfolio_state = simulate_trade(
+                            portfolio_state, SYMBOL, action, qty, current_price
+                        )
+                        save_test_state(portfolio_state)
+                    else:
+                        if portfolio_state["btc_held"] > 0:
+                            print("  No trade: Holding long position")
+                        else:
+                            print("  No trade: Waiting for BUY signal")
+
+                else:
+                    print("  Could not analyze signal (data fetch error)")
+
+            except KeyboardInterrupt:
+                print("\n\nShutdown signal received...")
+                break
+            except Exception as e:
+                print(f"Error in main loop: {e}")
+                import traceback
+
+                traceback.print_exc()
+                import time
+
+                print("Waiting 60 seconds before retry...")
+                time.sleep(60)
+                continue
+
+            import time
+
+            print(f"\nSleeping {CHECK_INTERVAL} seconds...")
+            time.sleep(CHECK_INTERVAL)
+
+    except KeyboardInterrupt:
+        pass
+
+    print("\n" + "=" * 60)
+    print("Test Trading Session Ended")
+    print("=" * 60)
+
+    final_price = get_current_price("BTC-USD")
+    if final_price:
+        final_value = get_test_portfolio_value(portfolio_state, final_price)
+        from ..config import INITIAL_CAPITAL
+
+        initial_value = INITIAL_CAPITAL
+        return_pct = ((final_value - initial_value) / initial_value) * 100
+        print(f"\nFinal Portfolio Value: ${final_value:.2f}")
+        print(f"Initial Capital: ${initial_value:.2f}")
+        print(f"Return: {return_pct:.2f}%")
+        print(f"Total Trades: {len(portfolio_state['trades'])}")
+
+        if portfolio_state["trades"]:
+            print("\nLast 5 trades:")
+            for t in portfolio_state["trades"][-5:]:
+                print(
+                    f"  {t['time']}: {t['side'].upper()} {t['quantity']:.6f} @ ${t['price']:,.2f}"
+                )
+
+    print(f"\nState saved to: {TEST_STATE_FILE}")
+    print("Run again with --test to resume from this state.")
+
+
+def run_live_trading(fgi_df: pd.DataFrame):
+    """Run live trading mode."""
+    print("\n" + "=" * 60)
+    print("LIVE TRADING MODE")
+    print("=" * 60)
+
+    import os
+
+    api_key = os.getenv("ALPACA_API_KEY")
+    secret_key = os.getenv("ALPACA_SECRET_KEY")
+
+    if not ALPACA_AVAILABLE:
+        print("\nLive Trading: alpaca-py not installed")
+        print("Install with: pip install alpaca-py")
+    elif not api_key or not secret_key:
+        print("\nLive Trading: ALPACA_API_KEY and ALPACA_SECRET_KEY not set")
+        print("Create a .env file with these variables")
+    else:
+        SYMBOL = "BTC/USD"
+        CHECK_INTERVAL = 300  # 5 minutes between checks
+        TRADING_CLIENT = TradingClient(api_key, secret_key, paper=True)
+
+        print("\nUsing optimized strategy parameters:")
+        print(f"  RSI Window: {BEST_PARAMS['rsi_window']}")
+        print(f"  Trail %: {BEST_PARAMS['trail_pct']}")
+        print(f"  Buy Quantile: {BEST_PARAMS['buy_quantile']}")
+        print(f"  Sell Quantile: {BEST_PARAMS['sell_quantile']}")
+        print(f"  ML Threshold: {BEST_PARAMS['ml_thresh']}")
+        print(f"\nStarting live trading monitor for {SYMBOL}")
+        print(f"Check interval: {CHECK_INTERVAL} seconds")
+        print("Press Ctrl+C to stop")
+        print("-" * 60)
+
+        trade_log = []
+        try:
+            while True:
+                try:
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    print(f"\n[{now}] Checking signal...")
+
+                    account_info = get_account_info(TRADING_CLIENT)
+                    if account_info:
+                        print(
+                            f"  Account: ${account_info['equity']:.2f} equity, ${account_info['cash']:.2f} cash"
+                        )
+
+                    position = get_position(SYMBOL, TRADING_CLIENT)
+                    print(f"  Position: {position:.6f} {SYMBOL}")
+
+                    signal_info = analyze_live_signal(fgi_df)
+                    if signal_info and "indicators" in signal_info:
+                        ind = signal_info["indicators"]
+                        print(f"  BTC: ${ind.get('price', 0):,.2f}")
+                        print(
+                            f"  FGI: {ind.get('fgi', 0)} (buy<= {ind.get('fgi_buy_thresh', 0):.0f}, sell>= {ind.get('fgi_sell_thresh', 0):.0f})"
+                        )
+                        print(f"  RSI: {ind.get('rsi', 0):.1f} (buy<30, sell>70)")
+                        print(
+                            f"  ML: {ind.get('ml_pred', 0):.2f} (>{ind.get('ml_thresh', 0):.2f})"
+                        )
+                        print(f"  Signal: {signal_info['signal'].upper()}")
+
+                        action, qty = should_trade(
+                            signal_info,
+                            position,
+                            is_live=True,
+                            account_info=account_info,
+                        )
+
+                        if action != "hold":
+                            print(
+                                f"\n  >>> Executing {action.upper()} {qty:.6f} {SYMBOL} <<<"
+                            )
+                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT)
+                            order_id = order.id if order else None
+                            log_trade(signal_info, action, qty, order_id)
+                            trade_log.append(
+                                {
+                                    "time": now,
+                                    "action": action,
+                                    "qty": qty,
+                                    "price": ind.get("price", 0),
+                                }
+                            )
+                        else:
+                            if position > 0:
+                                print("  No trade: Holding long position")
+                            else:
+                                print("  No trade: Waiting for BUY signal")
+
+                    else:
+                        print("  Could not analyze signal (data fetch error)")
+
+                except KeyboardInterrupt:
+                    print("\n\nShutdown signal received...")
+                    break
+                except Exception as e:
+                    print(f"Error in main loop: {e}")
+                    import time
+
+                    print("Waiting 60 seconds before retry...")
+                    time.sleep(60)
+                    continue
+
+                import time
+
+                print(f"\nSleeping {CHECK_INTERVAL} seconds...")
+                time.sleep(CHECK_INTERVAL)
+
+        except KeyboardInterrupt:
+            pass
+
+        print("\n" + "=" * 60)
+        print("Live Trading Stopped")
+        print("=" * 60)
+        if trade_log:
+            print(f"Trade history ({len(trade_log)} trades):")
+            for t in trade_log[-10:]:
+                print(
+                    f"  {t['time']}: {t['action'].upper()} {t['qty']:.6f} @ ${t['price']:,.2f}"
+                )
