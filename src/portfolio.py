@@ -9,6 +9,58 @@ from datetime import datetime
 from .config import INITIAL_CAPITAL, MAKER_FEE, TAKER_FEE, TEST_STATE_FILE
 
 
+def calculate_portfolio_var(positions: dict, confidence_level: float = 0.95) -> dict:
+    """Calculate Value at Risk (VaR) for the portfolio.
+
+    Args:
+        positions: Dict of position values by asset
+        confidence_level: Confidence level for VaR (default 95%)
+
+    Returns:
+        Dict with VaR calculations for different time periods
+    """
+    import numpy as np
+    from scipy.stats import norm
+
+    if not positions:
+        return {
+            "daily_var": 0.0,
+            "weekly_var": 0.0,
+            "monthly_var": 0.0,
+            "confidence_level": confidence_level,
+            "portfolio_value": 0.0,
+        }
+
+    # Calculate total portfolio value
+    total_portfolio_value = sum(abs(value) for value in positions.values())
+
+    if total_portfolio_value == 0:
+        return {
+            "daily_var": 0.0,
+            "weekly_var": 0.0,
+            "monthly_var": 0.0,
+            "confidence_level": confidence_level,
+            "portfolio_value": 0.0,
+        }
+
+    # Assume 2% daily volatility for crypto (conservative estimate)
+    # This could be enhanced with actual historical volatility
+    daily_volatility = 0.02
+
+    # Calculate VaR using normal distribution
+    z_score = norm.ppf(1 - confidence_level)
+    var_daily = total_portfolio_value * daily_volatility * abs(z_score)
+
+    return {
+        "daily_var": var_daily,
+        "weekly_var": var_daily * np.sqrt(5),
+        "monthly_var": var_daily * np.sqrt(21),
+        "confidence_level": confidence_level,
+        "portfolio_value": total_portfolio_value,
+        "daily_volatility": daily_volatility,
+    }
+
+
 def load_test_state() -> dict:
     """Load test portfolio state from file."""
     if os.path.exists(TEST_STATE_FILE):

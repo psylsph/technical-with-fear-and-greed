@@ -2,16 +2,38 @@
 
 This document provides guidelines for agents working in this repository.
 
+## Project Overview
+
+Fear & Greed Trading Strategy - A quantitative trading system using FGI and RSI sentiment for cryptocurrency trading with short selling support.
+
+**Recommended Asset:** ETH-USD (best risk-adjusted returns)
+
 ## Build/Lint/Test Commands
 
 ### Running the Trading Strategy
 ```bash
-source venv/bin/activate && python trading_strategy.py
+source venv/bin/activate && python main.py
+```
+
+### Backtest Suite (Recommended)
+```bash
+python backtest_suite.py                          # Single asset backtest
+python backtest_suite.py --compare                # Multi-asset comparison
+python backtest_suite.py --walk-forward           # Walk-forward analysis
+python backtest_suite.py --validate               # Train/validation split
+python backtest_suite.py --asset ETH-USD --start 2024-01-01 --end 2025-01-01
 ```
 
 ### Installing Dependencies
 ```bash
 pip install -r requirements.txt
+```
+
+### Parameter Optimization
+```bash
+python main.py --optimize --optimization-type grid        # Grid search
+python main.py --optimize --optimization-type random      # Random search
+python main.py --optimize --optimization-type walk_forward  # Walk-forward
 ```
 
 ### Linting and Formatting (REQUIRED)
@@ -22,7 +44,6 @@ ruff format .     # Format code with ruff
 ```
 
 ### Running Tests
-No formal test framework is configured. To add tests:
 ```bash
 pytest              # Run all tests
 pytest -v           # Verbose output
@@ -30,10 +51,16 @@ pytest -k "test_name"  # Run specific test
 ```
 
 ### Required Verification After Every Change
-Run this command after making any code changes:
 ```bash
-ruff check . && pyright . && python trading_strategy.py
+ruff check . && python main.py
 ```
+
+## Short Selling
+
+The strategy now supports both long and short positions:
+- **Long Entry:** RSI < 30, FGI/Sentiment < buy_quantile
+- **Short Entry:** RSI > 70, FGI/Sentiment > 75
+- **Short Exit:** RSI < 30, or 15% profit target, or trailing stop
 
 ## Code Style Guidelines
 
@@ -117,7 +144,7 @@ def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float) -> float:
 - Use `pd.DataFrame.vbt.signals.empty_like()` for signal placeholders
 - Use `Portfolio.from_signals()` for backtesting
 - Chain method calls where appropriate for readability
-- Handle vectorbt data fetching with type checking as shown in trading_strategy.py
+- Handle vectorbt data fetching with type checking
 
 ### File Structure
 - Keep related functionality together

@@ -1,130 +1,85 @@
-# BTC Fear & Greed Index Trading Strategy
+# Fear & Greed Trading Strategy
 
-A sophisticated algorithmic trading system that uses Fear & Greed Index (FGI), technical indicators, and machine learning to trade Bitcoin.
+A quantitative trading strategy that uses the Crypto Fear & Greed Index combined with RSI-based sentiment for cryptocurrency trading. Supports both long and short positions.
 
 ## Features
 
-- **Multi-timeframe backtesting** (Daily, Hourly)
-- **Machine learning predictions** for FGI direction
-- **Dynamic FGI thresholds** based on market conditions
-- **Technical indicators** (RSI, Trailing stops, Take profit)
-- **Live trading** via Alpaca API
-- **Paper trading** for risk-free testing
-- **Portfolio persistence** across sessions
+- **Fear & Greed Index Trading**: Buy when FGI is low (fear), sell when FGI is high (greed)
+- **RSI Confirmation**: Use RSI oversold/overbought conditions for entry timing
+- **Short Selling**: Short when FGI > 75 and RSI > 70 (extreme greed + overbought)
+- **Trailing Stops**: ATR-based dynamic trailing stops
+- **Regime Filtering**: Avoid trading in unfavorable market conditions
+- **Multi-Asset Support**: BTC, ETH, and XRP with RSI sentiment proxy
 
-## Project Structure
+## Quick Start
 
-```
-├── src/
-│   ├── config.py              # Configuration constants
-│   ├── indicators.py          # Technical analysis indicators
-│   ├── strategy.py            # Trading strategy logic
-│   ├── ml/
-│   │   └── ml_model.py        # ML model training and prediction
-│   ├── data/
-│   │   └── data_fetchers.py   # Data fetching utilities
-│   ├── trading/
-│   │   └── trading_engine.py  # Live/test trading execution
-│   └── portfolio.py           # Portfolio management
-├── tests/
-│   └── test_trading_strategy.py  # Comprehensive test suite
-├── main.py                    # Entry point
-├── pyproject.toml            # Project configuration
-├── requirements.txt          # Dependencies
-└── dev-check.sh             # Development tools script
-```
-
-## Installation
-
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Set up API keys (optional):
-   ```bash
-   # For Coinbase data (optional)
-   cp cdp_api_key.json.example cdp_api_key.json
-
-   # For live trading (optional)
-   export ALPACA_API_KEY=your_key
-   export ALPACA_SECRET_KEY=your_secret
-   ```
-
-## Usage
-
-### Backtesting
 ```bash
-python main.py
+# Install dependencies
+pip install -r requirements.txt
+
+# Run backtest
+python backtest_suite.py --asset ETH-USD --start 2024-01-01 --end 2025-01-01
+
+# Compare all assets
+python backtest_suite.py --compare
+
+# Walk-forward analysis
+python backtest_suite.py --walk-forward
+
+# Parameter validation
+python backtest_suite.py --validate
 ```
 
-### Paper Trading (Simulated)
-```bash
-python main.py --test
-```
+## Results (2024-2025)
 
-### Live Trading
-```bash
-python main.py --live
-```
+| Asset | Return | Sharpe | Win Rate | Drawdown | Trades |
+|-------|--------|--------|----------|----------|--------|
+| **ETH-USD** | **74.99%** | **1.75** | **72.7%** | **18.86%** | **23** |
 
-## Development
+ETH-USD is recommended for the best balance of risk-adjusted returns.
 
-Run all development checks:
-```bash
-./dev-check.sh
-```
+## Parameters
 
-This will:
-- Format code with Black
-- Sort imports with isort
-- Lint with Ruff
-- Type check with MyPy
-- Run tests with 80% coverage requirement
+Default parameters (conservative):
+- `rsi_window`: 14
+- `trail_pct`: 8%
+- `buy_quantile`: 0.20 (bottom 20% of FGI values)
+- `sell_quantile`: 0.80 (top 20% of FGI values)
+- `atr_multiplier`: 2.5
 
-### Running Tests Manually
-```bash
-pytest --cov=src --cov-report=term-missing --cov-fail-under=80
-```
+## Strategy Logic
 
-### Code Quality
-- **Linting**: Ruff
-- **Formatting**: Black
-- **Type checking**: MyPy
-- **Import sorting**: isort
+### Long Entry
+- FGI <= buy_quantile threshold AND RSI < 30
 
-## Strategy Details
+### Short Entry
+- FGI >= 75 AND RSI > 70
 
-### Entry Signals
-- FGI ≤ dynamic buy threshold (20th percentile)
-- RSI < 30 (oversold)
-- ML prediction > threshold (bullish outlook)
+### Exit Conditions
+- FGI returns to neutral (< 45 for longs, > 75 exits shorts)
+- RSI crosses extreme levels
+- 25% profit target (longs) / 15% profit target (shorts)
+- Trailing stop hit
+- Max drawdown (15%) reached
 
-### Exit Signals
-- FGI ≥ dynamic sell threshold (80th percentile)
-- RSI > 70 (overbought)
-- 25% take profit
-- 10% trailing stop loss
+## Files
 
-### ML Model
-- **Type**: Random Forest Classifier
-- **Features**: FGI, Price, RSI, Volume, Lagged FGI
-- **Target**: Next day FGI direction (up/down)
-- **Training**: Daily data from 2024-2025
+- `main.py` - Main trading script
+- `backtest_suite.py` - Comprehensive backtesting tool
+- `src/strategy.py` - Core strategy implementation
+- `src/config.py` - Configuration parameters
+- `src/data/data_fetchers.py` - Data fetching from exchanges
+- `src/sentiment.py` - RSI-based sentiment for non-BTC assets
+- `src/parameter_optimizer.py` - Parameter optimization module
 
-## Risk Management
+## Requirements
 
-- Maximum position size: 10% of portfolio per trade
-- Transaction fees: 0.25% taker, 0.15% maker
-- Daily signal checking with 5-minute intervals
-- Portfolio state persistence for paper trading
-
-## Data Sources
-
-- **Fear & Greed Index**: alternative.me API
-- **Price Data**: Yahoo Finance (fallback to Coinbase)
-- **Live Trading**: Alpaca API (paper mode available)
+- Python 3.10+
+- pandas
+- numpy
+- vectorbt
+- requests
 
 ## License
 
-MIT License
+MIT

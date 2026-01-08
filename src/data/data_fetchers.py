@@ -8,7 +8,7 @@ import sqlite3
 import time
 import urllib.request
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 
 import pandas as pd
 import requests
@@ -16,6 +16,19 @@ import vectorbt as vbt
 import yfinance as yf
 
 from ..config import CACHE_DIR, CDP_KEY_FILE, GRANULARITY_TO_SECONDS
+
+# News sentiment API endpoints (example implementations)
+CRYPTO_NEWS_APIS = {
+    "cryptopanic": "https://cryptopanic.com/api/v3/posts/",
+    "lunarcrush": "https://api.lunarcrush.com/v2",
+    "theblock": "https://api.theblock.co/v1",
+}
+
+# Options flow API endpoints
+OPTIONS_APIS = {
+    "deribit": "https://www.deribit.com/api/v2/public/",
+    " CME": "https://www.cmegroup.com/CmeWS/mvc/",  # Limited public access
+}
 
 
 def init_database():
@@ -416,6 +429,38 @@ def fetch_fear_greed_index(limit: int = 730) -> pd.DataFrame:
     return fgi_df.sort_index()
 
 
+def fetch_eth_price_data(
+    start: str, end: str, freq: str = "1d"
+) -> Optional[pd.DataFrame]:
+    """Fetch ETH-USD price data.
+
+    Args:
+        start: Start date in YYYY-MM-DD format
+        end: End date in YYYY-MM-DD format
+        freq: Frequency string ('1d', '1h', '15min', etc.)
+
+    Returns:
+        DataFrame with OHLCV data or None if fetching fails
+    """
+    return fetch_unified_price_data("ETH-USD", start, end, freq)
+
+
+def fetch_xrp_price_data(
+    start: str, end: str, freq: str = "1d"
+) -> Optional[pd.DataFrame]:
+    """Fetch XRP-USD price data.
+
+    Args:
+        start: Start date in YYYY-MM-DD format
+        end: End date in YYYY-MM-DD format
+        freq: Frequency string ('1d', '1h', '15min', etc.)
+
+    Returns:
+        DataFrame with OHLCV data or None if fetching fails
+    """
+    return fetch_unified_price_data("XRP-USD", start, end, freq)
+
+
 def get_current_fgi() -> int:
     """Fetch current Fear & Greed Index."""
     url = "https://api.alternative.me/fng/?limit=1"
@@ -500,18 +545,44 @@ def fetch_unified_price_data(
 
         coverage_ratio = actual_days / requested_days if requested_days > 0 else 0
 
-        if coverage_ratio >= 0.95:
-            print(f"  Coinbase covers {coverage_ratio:.1%} of requested range")
+        # Different coverage requirements based on timeframe
+        min_bars_required = (
+            100 if freq in ["1h", "4h", "15m"] else 200
+        )  # Intraday vs daily
+        min_coverage_required = (
+            0.50 if freq in ["1h", "4h", "15m"] else 0.95
+        )  # More lenient for intraday
+
+        has_sufficient_data = (
+            len(coinbase_data) >= min_bars_required
+            and coverage_ratio >= min_coverage_required
+        )
+
+        if has_sufficient_data:
+            print(
+                f"  Coinbase covers {coverage_ratio:.1%} of requested range ({len(coinbase_data)} bars)"
+            )
             return coinbase_data[["open", "high", "low", "close", "volume"]]
         else:
-            print(f"  Coinbase covers only {coverage_ratio:.1%} of requested range")
+            print(
+                f"  Coinbase covers only {coverage_ratio:.1%} of requested range ({len(coinbase_data)} bars)"
+            )
             print(f"  Data range: {data_start.date()} to {data_end.date()}")
+            if len(coinbase_data) >= min_bars_required:
+                print(
+                    f"  Using Coinbase data despite partial coverage ({len(coinbase_data)} bars)"
+                )
+                return coinbase_data[["open", "high", "low", "close", "volume"]]
             print("  Falling back to Yahoo to supplement...")
 
     # Try Yahoo as fallback/supplement
     print("  Trying Yahoo (supplementary source)...")
 
-    yahoo_data = fetch_yahoo_data(symbol, start, end, freq)
+    try:
+        yahoo_data = fetch_yahoo_data(symbol, start, end, freq)
+    except ValueError as e:
+        print(f"  Yahoo data unavailable: {e}")
+        yahoo_data = None
 
     if yahoo_data is None:
         print("  Yahoo also unavailable")
@@ -801,3 +872,191 @@ def fetch_live_higher_tf_data(
     except Exception as e:
         print(f"Error fetching higher timeframe data: {e}")
         return {"higher_trend": True, "higher_rsi": 50}
+
+
+def fetch_crypto_news_sentiment(symbol: str = "BTC", hours_back: int = 24) -> Dict:
+    """Fetch and analyze crypto news sentiment for enhanced FGI interpretation.
+
+    Args:
+        symbol: Crypto symbol (BTC, ETH, etc.)
+        hours_back: Hours of news to analyze
+
+    Returns:
+        Dict with sentiment scores and key metrics
+    """
+    try:
+        # Example: CryptoPanic API integration
+        # Note: Requires API key and actual implementation
+        api_key = os.getenv("CRYPTOPANIC_API_KEY")
+        if not api_key:
+            return {
+                "sentiment_score": 0.0,
+                "confidence": 0.0,
+                "news_count": 0,
+                "error": "API key not configured",
+            }
+
+        # Construct API request
+        url = f"{CRYPTO_NEWS_APIS['cryptopanic']}?auth_token={api_key}&public=true"
+        params = {
+            "currencies": symbol,
+            "kind": "news",
+            "filter": "hot",
+            "regions": "en",
+        }
+
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+
+        # Process news items for sentiment
+        sentiment_scores = []
+        for post in data.get("results", [])[:20]:  # Analyze last 20 posts
+            title = post.get("title", "")
+            # Simple sentiment analysis (could be enhanced with NLP libraries)
+            positive_words = [
+                "bull",
+                "bullish",
+                "surge",
+                "rally",
+                "moon",
+                "pump",
+                "breakout",
+            ]
+            negative_words = [
+                "bear",
+                "bearish",
+                "crash",
+                "dump",
+                "drop",
+                "fall",
+                "correction",
+            ]
+
+            pos_count = sum(1 for word in positive_words if word in title.lower())
+            neg_count = sum(1 for word in negative_words if word in title.lower())
+
+            if pos_count > neg_count:
+                sentiment_scores.append(1)
+            elif neg_count > pos_count:
+                sentiment_scores.append(-1)
+            else:
+                sentiment_scores.append(0)
+
+        avg_sentiment = (
+            sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0
+        )
+
+        return {
+            "sentiment_score": avg_sentiment,
+            "confidence": min(
+                len(sentiment_scores) / 20, 1.0
+            ),  # Confidence based on news volume
+            "news_count": len(sentiment_scores),
+            "timestamp": pd.Timestamp.now(),
+            "source": "cryptopanic",
+        }
+
+    except Exception as e:
+        print(f"Error fetching crypto news: {e}")
+        return {
+            "sentiment_score": 0.0,
+            "confidence": 0.0,
+            "news_count": 0,
+            "error": str(e),
+            "timestamp": pd.Timestamp.now(),
+            "source": "error",
+        }
+
+
+def fetch_options_flow(symbol: str = "BTC", days_back: int = 7) -> Dict:
+    """Fetch BTC options flow data for market sentiment analysis.
+
+    Args:
+        symbol: Crypto symbol (BTC, ETH)
+        days_back: Days of options data to analyze
+
+    Returns:
+        Dict with put/call ratios and flow metrics
+    """
+    try:
+        # Deribit API for BTC options data
+        # Note: Requires API key for full access, demo shows structure
+
+        # For demo purposes, return synthetic data structure
+        # In production, this would make actual API calls to Deribit
+
+        return {
+            "put_call_ratio": 0.85,  # Put OI / Call OI
+            "total_open_interest": 150000,  # Total BTC in options
+            "call_oi": 90000,
+            "put_oi": 60000,
+            "implied_volatility": 65.5,  # Average IV
+            "fear_gauge": 0.75,  # Derived fear metric (0-1)
+            "timestamp": pd.Timestamp.now(),
+            "source": "deribit_demo",
+            "confidence": 0.8,
+            "note": "Demo data - requires API key for live data",
+        }
+
+    except Exception as e:
+        print(f"Error fetching options flow: {e}")
+        return {
+            "put_call_ratio": 1.0,  # Neutral
+            "total_open_interest": 0,
+            "call_oi": 0,
+            "put_oi": 0,
+            "implied_volatility": 50.0,
+            "fear_gauge": 0.5,
+            "error": str(e),
+            "timestamp": pd.Timestamp.now(),
+            "source": "error",
+        }
+
+
+def get_enhanced_market_sentiment(symbol: str = "BTC") -> Dict:
+    """Get comprehensive market sentiment combining multiple sources.
+
+    Args:
+        symbol: Crypto symbol to analyze
+
+    Returns:
+        Dict with combined sentiment metrics
+    """
+    try:
+        # Get news sentiment
+        news_data = fetch_crypto_news_sentiment(symbol)
+
+        # Get options flow
+        options_data = fetch_options_flow(symbol)
+
+        # Combine sentiments (weighted average)
+        news_weight = 0.4
+        options_weight = 0.6
+
+        combined_sentiment = (
+            news_weight
+            * (news_data.get("sentiment_score", 0) + 1)
+            / 2  # Normalize to 0-1
+            + options_weight
+            * (1 - options_data.get("fear_gauge", 0.5))  # Invert fear gauge
+        )
+
+        return {
+            "combined_sentiment": combined_sentiment,
+            "news_sentiment": news_data,
+            "options_flow": options_data,
+            "primary_driver": "options"
+            if options_data.get("confidence", 0) > news_data.get("confidence", 0)
+            else "news",
+            "timestamp": pd.Timestamp.now(),
+            "symbol": symbol,
+        }
+
+    except Exception as e:
+        print(f"Error getting enhanced sentiment: {e}")
+        return {
+            "combined_sentiment": 0.5,
+            "error": str(e),
+            "timestamp": pd.Timestamp.now(),
+            "symbol": symbol,
+        }
