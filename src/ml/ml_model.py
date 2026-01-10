@@ -45,6 +45,16 @@ def prepare_ml_data(
     close = ohlcv["close"]
     volume = ohlcv["volume"]
 
+    # Ensure all series use the same index
+    common_index = close.index
+
+    # Reindex fgi_df to match ohlcv index
+    fgi_aligned = fgi_df.reindex(common_index, method="ffill")
+    fgi_value = fgi_aligned["fgi_value"]
+
+    # Reindex rsi to match
+    rsi = rsi.reindex(common_index)
+
     # Price momentum features
     returns_3d = close.pct_change(3)
     returns_7d = close.pct_change(7)
@@ -70,40 +80,43 @@ def prepare_ml_data(
     volume_ratio = volume / volume_ma_7d
 
     # FGI features
-    fgi_value = fgi_df["fgi_value"]
     fgi_lag1 = fgi_value.shift(1)
     fgi_ma_7d = fgi_value.rolling(window=7).mean()
 
     # Price-FGI correlation (rolling)
     price_fgi_corr = close.rolling(window=30).corr(fgi_value).fillna(0)
 
-    df = pd.DataFrame(
-        {
-            # Price features
-            "close": close,
-            "returns_3d": returns_3d,
-            "returns_7d": returns_7d,
-            "returns_30d": returns_30d,
-            # Volatility features
-            "volatility_7d": volatility_7d,
-            "volatility_30d": volatility_30d,
-            "atr_14d": atr_14d,
-            # RSI feature
-            "rsi": rsi,
-            # FGI features
-            "fgi": fgi_value,
-            "fgi_lag1": fgi_lag1,
-            "fgi_ma_7d": fgi_ma_7d,
-            # Volume features
-            "volume": volume,
-            "volume_ratio": volume_ratio,
-            # Correlation feature
-            "price_fgi_corr": price_fgi_corr,
-        }
-    ).dropna()
+    # Build DataFrame with explicit index to avoid duplicates
+    data_dict = {
+        # Price features
+        "close": close.values,
+        "returns_3d": returns_3d.values,
+        "returns_7d": returns_7d.values,
+        "returns_30d": returns_30d.values,
+        # Volatility features
+        "volatility_7d": volatility_7d.values,
+        "volatility_30d": volatility_30d.values,
+        "atr_14d": atr_14d.values,
+        # RSI feature
+        "rsi": rsi.values,
+        # FGI features
+        "fgi": fgi_value.values,
+        "fgi_lag1": fgi_lag1.values,
+        "fgi_ma_7d": fgi_ma_7d.values,
+        # Volume features
+        "volume": volume.values,
+        "volume_ratio": volume_ratio.values,
+        # Correlation feature
+        "price_fgi_corr": price_fgi_corr.values,
+    }
+
+    df = pd.DataFrame(data_dict, index=common_index).dropna()
 
     # Target: predict PRICE direction (not FGI direction)
     df["target"] = (df["close"].shift(-1) > df["close"]).astype(int)
+
+    # Drop rows where target is NaN (last row)
+    df = df.dropna(subset=["target"])
 
     return df
 
@@ -126,7 +139,10 @@ def train_ml_model(
 
     # Use ensemble if requested and TensorFlow available
     if use_ensemble and TENSORFLOW_AVAILABLE:
-        return train_ml_ensemble(daily_ohlcv, fgi_df, lookback_days)
+        rf_model, lstm_model, ensemble_preds, ensemble_metrics = train_ml_ensemble(
+            daily_ohlcv, fgi_df, lookback_days
+        )
+        return rf_model, ensemble_preds, ensemble_metrics
 
     # Fallback to Random Forest only
     print(
@@ -572,6 +588,9 @@ def train_ml_ensemble(
     )
 
     metrics = {
+        "accuracy": ensemble_accuracy,  # Primary metric for backward compatibility
+        "precision": 0.0,  # Not calculated for ensemble
+        "recall": 0.0,  # Not calculated for ensemble
         "rf_accuracy": rf_accuracy,
         "ensemble_accuracy": ensemble_accuracy,
         "improvement": ensemble_accuracy - rf_accuracy,

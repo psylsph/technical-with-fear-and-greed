@@ -1,0 +1,65 @@
+# Base configuration for all environments
+# Environment-specific values override these
+
+trading:
+  initial_capital: 1000
+  maker_fee: 0.0015
+  taker_fee: 0.0025
+  default_asset: "ETH-USD"
+
+  # Optimized parameters for ETH-USD
+  rsi_window: 14
+  trail_pct: 0.0224
+  buy_quantile: 0.28
+  sell_quantile: 0.67
+  ml_thresh: 0.41
+  granularity: "ONE_DAY"
+  atr_multiplier: 3.14
+  max_drawdown_pct: 0.22
+
+  # Risk controls
+  position_size_limit: 0.05  # 5% of portfolio
+  max_drawdown_stop: 0.05  # 5% max drawdown
+  daily_loss_limit: 0.02  # 2% daily loss limit
+  trailing_stop_pct: 0.03  # 3% trailing stop
+  time_exit_days: 14  # Exit after 14 days if no profit
+
+  # ML settings
+  ml_lookback_days: 180
+  use_ensemble: true
+  use_advanced_ml: false
+  ml_performance_threshold: 50.0
+
+api:
+  # Alpaca API (paper trading by default)
+  alpaca_base_url: "https://paper-api.alpaca.markets"
+
+  # Fear & Greed API
+  fgi_api_url: "https://api.alternative.me/fng/"
+
+  # Rate limits
+  max_requests_per_minute: 60
+  max_requests_per_second: 5
+
+database:
+  market_data_db: "cache/market_data.db"
+  portfolio_state_file: "test_portfolio_state.json"
+  cache_ttl_seconds: 300  # 5 minutes
+  cache_max_size_mb: 100
+
+monitoring:
+  email_enabled: false
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  health_check_interval_seconds: 60
+  api_latency_threshold_ms: 1000
+  anomaly_detection_enabled: true
+  anomaly_threshold: 2.0
+
+logging:
+  log_level: "INFO"
+  log_file: "logs/trading.log"
+  log_max_bytes: 10485760  # 10MB
+  log_backup_count: 5
+  json_logs: false
+  include_timestamp: true

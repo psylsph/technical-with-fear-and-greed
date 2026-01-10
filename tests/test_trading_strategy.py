@@ -360,7 +360,8 @@ class TestPortfolio(unittest.TestCase):
         """Set up test portfolio state."""
         self.test_state = {
             "cash": 1000.0,
-            "btc_held": 0.0,
+            "eth_held": 0.0,
+            "entry_price": 0.0,
             "trades": [],
             "initialized": True,
         }
@@ -375,9 +376,9 @@ class TestPortfolio(unittest.TestCase):
     def test_simulate_trade_buy(self):
         """Test buy trade simulation."""
 
-        result = simulate_trade(self.test_state.copy(), "BTC/USD", "buy", 0.01, 50000.0)
+        result = simulate_trade(self.test_state.copy(), "ETH/USD", "buy", 0.01, 3000.0)
 
-        self.assertEqual(result["btc_held"], 0.01)
+        self.assertEqual(result["eth_held"], 0.01)
         self.assertLess(result["cash"], 1000.0)
         self.assertEqual(len(result["trades"]), 1)
         self.assertEqual(result["trades"][0]["side"], "buy")
@@ -385,37 +386,37 @@ class TestPortfolio(unittest.TestCase):
     def test_simulate_trade_buy_insufficient_funds(self):
         """Test buy trade with insufficient funds."""
 
-        result = simulate_trade(self.test_state.copy(), "BTC/USD", "buy", 0.5, 50000.0)
+        result = simulate_trade(self.test_state.copy(), "ETH/USD", "buy", 0.5, 3000.0)
 
-        self.assertEqual(result["btc_held"], 0.0)
+        self.assertEqual(result["eth_held"], 0.0)
         self.assertEqual(result["cash"], 1000.0)
         self.assertEqual(len(result["trades"]), 0)
 
     def test_simulate_trade_sell(self):
         """Test sell trade simulation."""
 
-        # First buy some BTC
+        # First buy some ETH
         buy_state = simulate_trade(
-            self.test_state.copy(), "BTC/USD", "buy", 0.01, 50000.0
+            self.test_state.copy(), "ETH/USD", "buy", 0.01, 3000.0
         )
         cash_after_buy = buy_state["cash"]
 
         # Then sell it at a higher price
-        sell_state = simulate_trade(buy_state, "BTC/USD", "sell", 0.01, 52000.0)
+        sell_state = simulate_trade(buy_state, "ETH/USD", "sell", 0.01, 3200.0)
 
-        self.assertEqual(sell_state["btc_held"], 0.0)
+        self.assertEqual(sell_state["eth_held"], 0.0)
         self.assertGreater(sell_state["cash"], cash_after_buy)
         self.assertEqual(len(sell_state["trades"]), 2)
 
-    def test_simulate_trade_sell_insufficient_btc(self):
-        """Test sell trade with insufficient BTC."""
+    def test_simulate_trade_sell_insufficient_eth(self):
+        """Test sell trade with insufficient ETH."""
 
         result = simulate_trade(
-            self.test_state.copy(), "BTC/USD", "sell", 0.01, 50000.0
+            self.test_state.copy(), "ETH/USD", "sell", 0.01, 3000.0
         )
 
         # Should not execute trade
-        self.assertEqual(result["btc_held"], 0.0)
+        self.assertEqual(result["eth_held"], 0.0)
         self.assertEqual(result["cash"], 1000.0)
         self.assertEqual(len(result["trades"]), 0)
 
@@ -440,7 +441,7 @@ class TestPortfolio(unittest.TestCase):
             loaded_state = load_test_state()
 
             self.assertEqual(loaded_state["cash"], self.test_state["cash"])
-            self.assertEqual(loaded_state["btc_held"], self.test_state["btc_held"])
+            self.assertEqual(loaded_state["eth_held"], self.test_state["eth_held"])
             self.assertEqual(
                 loaded_state["initialized"], self.test_state["initialized"]
             )
@@ -469,7 +470,7 @@ class TestPortfolio(unittest.TestCase):
 
             self.assertIsNotNone(result)
             self.assertEqual(result["cash"], 1000.0)
-            self.assertEqual(result["btc_held"], 0.0)
+            self.assertEqual(result["eth_held"], 0.0)
 
         finally:
             if os.path.exists(temp_file):
@@ -834,11 +835,11 @@ class TestIntegration(unittest.TestCase):
         state = load_test_state()
 
         # Simulate a few trades
-        state = simulate_trade(state, "BTC/USD", "buy", 0.01, 50000.0)
-        state = simulate_trade(state, "BTC/USD", "sell", 0.005, 55000.0)
+        state = simulate_trade(state, "ETH/USD", "buy", 0.01, 3000.0)
+        state = simulate_trade(state, "ETH/USD", "sell", 0.005, 3500.0)
 
         # Check final portfolio value
-        final_value = get_test_portfolio_value(state, 55000.0)
+        final_value = get_test_portfolio_value(state, 3500.0)
 
         self.assertGreater(final_value, INITIAL_CAPITAL - 100)
 

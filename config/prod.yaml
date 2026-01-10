@@ -1,0 +1,32 @@
+# Production environment configuration
+# Live trading with real money
+
+trading:
+  initial_capital: 10000  # Production capital
+  use_advanced_ml: true  # Use best available models
+
+  # Tighter risk controls for production
+  position_size_limit: 0.03  # 3% (reduced from 5%)
+  max_drawdown_stop: 0.03  # 3% (reduced from 5%)
+  daily_loss_limit: 0.01  # 1% (reduced from 2%)
+
+api:
+  # IMPORTANT: Set to live trading URL in production
+  # alpaca_base_url: "https://api.alpaca.markets"
+  alpaca_base_url: "https://paper-api.alpaca.markets"  # Default to paper for safety
+
+  # Stricter rate limits for production
+  max_requests_per_minute: 120  # Higher limit for production
+  max_requests_per_second: 10
+
+monitoring:
+  email_enabled: true  # Always enabled in production
+  health_check_interval_seconds: 30  # More frequent monitoring
+  api_latency_threshold_ms: 500  # Stricter latency threshold
+  anomaly_threshold: 1.5  # More sensitive anomaly detection
+
+logging:
+  log_level: "WARNING"  # Reduced verbosity
+  json_logs: true  # Structured logs for log aggregation
+  log_max_bytes: 52428800  # 50MB (larger files)
+  log_backup_count: 10  # More backups

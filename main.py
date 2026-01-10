@@ -84,11 +84,41 @@ def main():
         action="store_true",
         help="Quiet mode - minimal output, status every minute or on trades",
     )
+    parser.add_argument(
+        "--advanced-ml",
+        action="store_true",
+        help="Use Advanced ML Models (LSTM/Transformer) instead of basic Random Forest",
+    )
+    parser.add_argument(
+        "--ml-status",
+        action="store_true",
+        help="Show status of Advanced ML Models and their performance",
+    )
+    parser.add_argument(
+        "--train-advanced",
+        action="store_true",
+        help="Train Advanced ML Models (LSTM/Transformer) on historical data",
+    )
+    parser.add_argument(
+        "--use-ml-predictions",
+        action="store_true",
+        help="Use ML model predictions for walk-forward analysis trading decisions (default: use fixed thresholds)",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
     print("ETH Fear & Greed Index Strategy - Multiple Timeframes")
     print("=" * 60)
+
+    # Handle ML status request
+    if args.ml_status:
+        show_ml_status()
+        return
+
+    # Handle advanced ML training request
+    if args.train_advanced:
+        train_advanced_ml_models()
+        return
 
     # Load FGI data
     print("Loading FGI data...")
@@ -131,7 +161,7 @@ def main():
             )
         )
     elif args.walk_forward:
-        run_walk_forward_analysis(fgi_df)
+        run_walk_forward_analysis(fgi_df, use_ml_predictions=args.use_ml_predictions)
     elif args.optimize:
         run_parameter_optimization(fgi_df, args.optimization_type)
     elif args.multi_tf:
@@ -682,7 +712,7 @@ def analyze_multi_asset_signals(fgi_df: pd.DataFrame):
                 fgi_df,
                 fear_entry_threshold=30,
                 greed_exit_threshold=70,
-                max_drawdown_exit=0.08,
+                max_drawdown_exit=0.05,
                 _volatility_stop_multiplier=1.5,
                 pred_series=None,
                 enable_multi_tf=False,
@@ -718,9 +748,18 @@ def analyze_multi_asset_signals(fgi_df: pd.DataFrame):
             print(f"Error analyzing {asset} signals: {e}")
 
 
-def run_walk_forward_analysis(fgi_df: pd.DataFrame):
-    """Run walk-forward analysis with rolling train/test windows."""
+def run_walk_forward_analysis(fgi_df: pd.DataFrame, use_ml_predictions: bool = False):
+    """Run walk-forward analysis with rolling train/test windows.
+
+    Args:
+        fgi_df: Fear & Greed Index data
+        use_ml_predictions: If True, use ML model predictions for trading decisions
+    """
     print("\nRunning walk-forward analysis...")
+    if use_ml_predictions:
+        print("Mode: Using ML predictions for trading decisions")
+    else:
+        print("Mode: Using fixed parameter thresholds")
     print("=" * 80)
 
     # Walk-forward parameters
@@ -767,60 +806,124 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame):
         test_high = high.iloc[test_start:test_end]
         test_low = low.iloc[test_start:test_end]
 
-        # Train ML model on training data
+        # Train ML model on training data (pass full OHLCV slice)
+        ml_predictions = None
         try:
-            train_ml_model(
-                pd.DataFrame({"close": train_close}),
+            train_ohlcv = daily_ohlcv.iloc[train_start:train_end]
+            rf_model, pred_series, metrics = train_ml_model(
+                train_ohlcv,
                 train_fgi,
                 lookback_days=90,
                 use_ensemble=True,
             )
+            print(f"  ML Model Accuracy: {metrics['accuracy']:.3f}")
+            # Store predictions for test period if using ML predictions
+            if use_ml_predictions:
+                # Get predictions for test data using the trained model directly
+                from src.ml.ml_model import prepare_ml_data
+                from src.indicators import calculate_rsi
+
+                # Need historical data for feature calculation - use data up to test_end
+                hist_ohlcv = daily_ohlcv.iloc[:test_end]
+                hist_fgi = fgi_aligned.iloc[:test_end]
+                hist_rsi = calculate_rsi(hist_ohlcv["close"])
+                hist_ml_df = prepare_ml_data(hist_ohlcv, hist_fgi, hist_rsi)
+
+                # Extract only test period predictions
+                test_ohlcv = daily_ohlcv.iloc[test_start:test_end]
+
+                if len(hist_ml_df) > 0 and rf_model is not None:
+                    feature_columns = [
+                        "close", "returns_3d", "returns_7d", "returns_30d",
+                        "volatility_7d", "volatility_30d", "atr_14d", "rsi",
+                        "fgi", "fgi_lag1", "fgi_ma_7d", "volume", "volume_ratio",
+                        "price_fgi_corr"
+                    ]
+                    # Filter to test period
+                    test_ml_df = hist_ml_df.loc[test_ohlcv.index.intersection(hist_ml_df.index)]
+
+                    if len(test_ml_df) > 0:
+                        ml_predictions = pd.Series(
+                            rf_model.predict_proba(test_ml_df[feature_columns])[:, 1],
+                            index=test_ml_df.index
+                        )
+                        # Debug: Show prediction stats
+                        print(f"  ML Predictions - Min: {ml_predictions.min():.3f}, Max: {ml_predictions.max():.3f}, Mean: {ml_predictions.mean():.3f}")
+                        print(f"  Predictions > 0.60: {(ml_predictions > 0.60).sum()} / {len(ml_predictions)}")
+                    else:
+                        print(f"  Warning: No overlapping test data, using neutral predictions")
+                        ml_predictions = pd.Series(0.5, index=test_ohlcv.index)
+                else:
+                    print(f"  Warning: No ML data or model ({len(hist_ml_df)} samples, model: {rf_model is not None})")
+                    ml_predictions = pd.Series(0.5, index=test_ohlcv.index)
         except Exception as e:
             print(f"  ML training failed: {e}, using no-ML approach")
 
-        # Run strategy on test data with various parameter combinations
-        combos = [
-            (30, 70, 20, 1.5),
-            (25, 75, 20, 1.5),
-            (35, 65, 20, 1.5),
-        ]
-
-        window_results = []
-        for fear_thresh, greed_thresh, adx_thresh, vol_mult in combos:
+        # Run strategy on test data
+        if use_ml_predictions and ml_predictions is not None:
+            # Use ML predictions for trading decisions
             try:
-                result = run_simple_strategy(
+                result = run_ml_based_strategy(
                     pd.DataFrame(
                         {"close": test_close, "high": test_high, "low": test_low}
                     ),
                     test_fgi,
-                    "Walk-Forward",
+                    ml_predictions,
+                    "Walk-Forward-ML",
                     volatility_lookback=20,
-                    max_drawdown_exit=0.08,
-                    trend_filter_days=50,
-                    fear_entry_threshold=fear_thresh,
-                    greed_exit_threshold=greed_thresh,
-                    _volatility_stop_multiplier=vol_mult,
-                    adx_threshold=adx_thresh,
+                    max_drawdown_exit=0.05,
                 )
-                window_results.append(
-                    (result, (fear_thresh, greed_thresh, adx_thresh, vol_mult))
+                results.append(result)
+                print(f"  ML-Based Strategy:")
+                print(
+                    f"  Return: {result['total_return']:.2f}%, Trades: {result['total_trades']}, Win Rate: {result['win_rate']:.1f}%"
                 )
             except Exception as e:
-                print(f"  Strategy failed for params {fear_thresh}/{greed_thresh}: {e}")
-                continue
+                print(f"  ML-based strategy failed: {e}")
+        else:
+            # Use fixed parameter combinations (baseline)
+            combos = [
+                (30, 70, 20, 1.5),
+                (25, 75, 20, 1.5),
+                (35, 65, 20, 1.5),
+            ]
 
-        # Best result for this window
-        if window_results:
-            best_result, best_params = max(
-                window_results, key=lambda x: x[0]["total_return"]
-            )
-            results.append(best_result)
-            print(
-                f"  Best params: Fear≤{best_params[0]}, Greed≥{best_params[1]}, ADX>{best_params[2]}"
-            )
-            print(
-                f"  Return: {best_result['total_return']:.2f}%, Trades: {best_result['total_trades']}, Win Rate: {best_result['win_rate']:.1f}%"
-            )
+            window_results = []
+            for fear_thresh, greed_thresh, adx_thresh, vol_mult in combos:
+                try:
+                    result = run_simple_strategy(
+                        pd.DataFrame(
+                            {"close": test_close, "high": test_high, "low": test_low}
+                        ),
+                        test_fgi,
+                        "Walk-Forward",
+                        volatility_lookback=20,
+                        max_drawdown_exit=0.05,
+                        trend_filter_days=50,
+                        fear_entry_threshold=fear_thresh,
+                        greed_exit_threshold=greed_thresh,
+                        _volatility_stop_multiplier=vol_mult,
+                        adx_threshold=adx_thresh,
+                    )
+                    window_results.append(
+                        (result, (fear_thresh, greed_thresh, adx_thresh, vol_mult))
+                    )
+                except Exception as e:
+                    print(f"  Strategy failed for params {fear_thresh}/{greed_thresh}: {e}")
+                    continue
+
+            # Best result for this window
+            if window_results:
+                best_result, best_params = max(
+                    window_results, key=lambda x: x[0]["total_return"]
+                )
+                results.append(best_result)
+                print(
+                    f"  Best params: Fear≤{best_params[0]}, Greed≥{best_params[1]}, ADX>{best_params[2]}"
+                )
+                print(
+                    f"  Return: {best_result['total_return']:.2f}%, Trades: {best_result['total_trades']}, Win Rate: {best_result['win_rate']:.1f}%"
+                )
 
     if not results:
         print("\nNo valid walk-forward windows")
@@ -842,12 +945,147 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame):
     print(f"Average max drawdown: {avg_drawdown:.2f}%")
 
 
+def run_ml_based_strategy(
+    ohlcv_data: pd.DataFrame,
+    fgi_df: pd.DataFrame,
+    ml_predictions: pd.Series,
+    granularity_name: str,
+    volatility_lookback: int = 20,
+    max_drawdown_exit: float = 0.05,
+) -> dict:
+    """Run strategy using ML model predictions for trading decisions.
+
+    Args:
+        ohlcv_data: OHLCV price data
+        fgi_df: Fear & Greed Index data (for additional context)
+        ml_predictions: ML model predictions (probability of price going up, 0-1)
+        granularity_name: Name of the timeframe
+        volatility_lookback: Period for volatility calculation
+        max_drawdown_exit: Maximum drawdown before exit
+
+    Returns:
+        Dictionary with strategy results
+    """
+    import vectorbt as vbt
+
+    # Extract OHLC data
+    close = ohlcv_data["close"]
+    high = ohlcv_data["high"]
+    low = ohlcv_data["low"]
+
+    # Ensure close is a Series with a name
+    if isinstance(close, pd.Series):
+        if not close.name:
+            close = close.copy()
+            close.name = "close"
+
+    # Create entries and exits
+    entries = pd.DataFrame(False, index=close.index, columns=[close.name])
+    exits = pd.DataFrame(False, index=close.index, columns=[close.name])
+
+    # Calculate ATR for volatility-based stops
+    high_low = high - low
+    high_close = (high - close.shift(1)).abs()
+    low_close = (low - close.shift(1)).abs()
+    true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    atr = true_range.rolling(window=14).mean()
+
+    # Calculate volatility
+    returns = close.pct_change()
+    volatility = returns.rolling(window=volatility_lookback).std()
+
+    # ML-based strategy logic
+    position_open = False
+    entry_price = 0.0
+    peak_price = 0.0
+
+    for i in range(1, len(close)):
+        if i < volatility_lookback or i >= len(ml_predictions):
+            continue
+
+        current_price = close.iloc[i]
+        ml_pred = ml_predictions.iloc[i]
+        current_vol = volatility.iloc[i]
+        current_atr = atr.iloc[i]
+
+        # Check for stop loss / take profit
+        if position_open:
+            # Volatility-based trailing stop
+            stop_loss_price = peak_price - (2.0 * current_atr)
+            take_profit_price = entry_price * 1.05  # 5% take profit
+
+            # Max drawdown exit
+            drawdown = (current_price - peak_price) / peak_price
+
+            if current_price <= stop_loss_price or drawdown < -max_drawdown_exit:
+                exits.iloc[i] = True
+                position_open = False
+                entry_price = 0.0
+                peak_price = 0.0
+            elif current_price >= take_profit_price:
+                exits.iloc[i] = True
+                position_open = False
+                entry_price = 0.0
+                peak_price = 0.0
+            elif ml_pred < 0.45:  # Exit when ML becomes bearish
+                exits.iloc[i] = True
+                position_open = False
+                entry_price = 0.0
+                peak_price = 0.0
+            else:
+                # Update peak price for trailing stop
+                peak_price = max(peak_price, current_price)
+        else:
+            # Entry logic based on ML predictions
+            # Enter when ML is confident (>60% probability of up move)
+            # and volatility is not extreme
+            if ml_pred > 0.60 and current_vol < volatility.quantile(0.75):
+                entries.iloc[i] = True
+                position_open = True
+                entry_price = current_price
+                peak_price = current_price
+
+    # Run portfolio simulation
+    try:
+        portfolio = vbt.Portfolio.from_signals(
+            close=close,
+            entries=entries,
+            exits=exits,
+            init_cash=10000,
+            fees=0.001,  # 0.1% fees
+            freq="1D",
+        )
+
+        trades = portfolio.trades.records_readable
+        stats = portfolio.stats()
+
+        return {
+            "total_return": stats["Total Return [%]"],
+            "total_trades": len(trades),
+            "win_rate": stats["Win Rate [%]"],
+            "max_drawdown": stats["Max Drawdown [%]"],
+            "sharpe_ratio": stats["Sharpe Ratio"],
+            "granularity": granularity_name,
+        }
+    except Exception as e:
+        # Fallback if vectorbt fails
+        total_trades = entries.sum().sum()
+        return {
+            "total_return": 0.0,
+            "total_trades": total_trades,
+            "win_rate": 0.0,
+            "max_drawdown": 0.0,
+            "sharpe_ratio": 0.0,
+            "granularity": granularity_name,
+        }
+
+
 def run_simple_strategy(
     ohlcv_data: pd.DataFrame,
     fgi_df: pd.DataFrame,
     granularity_name: str,
     volatility_lookback: int = 20,
-    max_drawdown_exit: float = 0.08,
+    max_drawdown_exit: float = 0.05,
     trend_filter_days: int = 50,
     fear_entry_threshold: int = 30,
     greed_exit_threshold: int = 70,
@@ -1134,6 +1372,121 @@ def run_parameter_optimization(fgi_df: pd.DataFrame, optimization_type: str = "g
     print("\nUpdating BEST_PARAMS with optimized values...")
     update_best_params(results["best_params"])
     print(f"New BEST_PARAMS: {BEST_PARAMS}")
+
+
+def show_ml_status():
+    """Display status of Advanced ML Models."""
+    print("\n" + "=" * 70)
+    print("ADVANCED ML MODELS STATUS")
+    print("=" * 70)
+
+    try:
+        from src.ml.advanced_ml_models import (
+            get_advanced_ml_manager,
+            is_advanced_ml_enabled,
+            ModelType,
+            TENSORFLOW_AVAILABLE,
+        )
+
+        manager = get_advanced_ml_manager()
+        print(manager.get_status_report())
+
+        # Show which models are enabled (only if TensorFlow is available)
+        if TENSORFLOW_AVAILABLE:
+            print("\nModel Enable Status:")
+            for model_type in [ModelType.LSTM, ModelType.TRANSFORMER]:
+                enabled = is_advanced_ml_enabled(model_type)
+                status = "✅ ENABLED" if enabled else "❌ DISABLED"
+                print(f"  {model_type.value.upper()}: {status}")
+
+    except Exception as e:
+        print(f"\nError getting ML status: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def train_advanced_ml_models():
+    """Train Advanced ML Models on historical data."""
+    print("\n" + "=" * 70)
+    print("TRAINING ADVANCED ML MODELS")
+    print("=" * 70)
+
+    try:
+        from src.ml.advanced_ml_models import (
+            get_advanced_ml_manager,
+            train_advanced_models,
+            TENSORFLOW_AVAILABLE,
+        )
+        from src.ml.ml_model import prepare_ml_data
+        from src.indicators import calculate_rsi
+
+        if not TENSORFLOW_AVAILABLE:
+            print("\n❌ TensorFlow is not available")
+            print("   Install with: pip install tensorflow")
+            return
+
+        # Fetch training data
+        print("\nFetching training data...")
+        daily_ohlcv = fetch_unified_price_data("ETH-USD", START_DATE, END_DATE, "1d")
+
+        if daily_ohlcv is None or len(daily_ohlcv) < 100:
+            print("Insufficient data for training")
+            return
+
+        # Fetch FGI data
+        fgi_df = fetch_fear_greed_index()
+
+        # Calculate RSI
+        rsi = calculate_rsi(daily_ohlcv["close"])
+
+        # Prepare ML data
+        print("Preparing ML features...")
+        ml_data = prepare_ml_data(daily_ohlcv, fgi_df, rsi)
+
+        # Create target column (future return > 0)
+        ml_data["target"] = (ml_data["returns_3d"].shift(-1) > 0).astype(int)
+
+        # Drop NaN
+        ml_data = ml_data.dropna()
+
+        print(f"Training data: {len(ml_data)} samples")
+        print(f"Features: {len(ml_data.columns) - 1}")
+
+        # Train models
+        print("\nTraining LSTM and Transformer models...")
+        print("(This may take several minutes...)")
+
+        results = train_advanced_models(ml_data, target_column="target")
+
+        # Show results
+        print("\n" + "-" * 70)
+        print("TRAINING RESULTS")
+        print("-" * 70)
+
+        for model_name, result in results.items():
+            if result["trained"]:
+                perf = result["performance"]
+                if perf:
+                    print(f"\n{model_name.upper()}:")
+                    print(f"  Overall Score: {perf.get('overall_score', 'N/A')}")
+                    print(f"  Accuracy: {perf.get('accuracy', 'N/A')}")
+                    print(f"  Sharpe Ratio: {perf.get('sharpe_ratio', 'N/A')}")
+                    print(f"  Win Rate: {perf.get('win_rate', 'N/A')}")
+                    print(f"  Max Drawdown: {perf.get('max_drawdown', 'N/A')}")
+                else:
+                    print(f"\n{model_name.upper()}: Trained (no performance data)")
+            else:
+                print(f"\n{model_name.upper()}: Not trained (insufficient data)")
+
+        # Show final status
+        manager = get_advanced_ml_manager()
+        print("\n" + "-" * 70)
+        print(manager.get_status_report())
+
+    except Exception as e:
+        print(f"\nError training models: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

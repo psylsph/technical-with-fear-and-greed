@@ -18,3 +18,10 @@ logs/
 Thumbs.db
 *.db
 config.yaml
+*_tracking.json
+*_state.json
+daily_pnl_state.json
+position_tracking.json
+trade_log.json
+test_portfolio_state.json
+paper_portfolio_state.json

@@ -1,0 +1,33 @@
+{
+  "last_updated": "2026-01-10T20:14:04.479960",
+  "performances": [
+    {
+      "model_type": "lstm",
+      "accuracy": 0.8793,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "sharpe_ratio": 1.52,
+      "max_drawdown": -0.02,
+      "total_return": 0.19,
+      "win_rate": 0.88,
+      "sample_count": 969,
+      "last_updated": "2026-01-10T20:13:09.776851",
+      "enabled": true
+    },
+    {
+      "model_type": "transformer",
+      "accuracy": 0.8793,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "sharpe_ratio": 1.52,
+      "max_drawdown": -0.02,
+      "total_return": 0.19,
+      "win_rate": 0.88,
+      "sample_count": 969,
+      "last_updated": "2026-01-10T20:14:04.479930",
+      "enabled": true
+    }
+  ]
+}

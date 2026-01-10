@@ -14,6 +14,7 @@ from ..data.data_fetchers import get_current_price
 from ..ml.ml_model import pred_series
 from ..portfolio import load_test_state, save_test_state, calculate_portfolio_var
 from ..strategy import generate_signal
+from .risk_controls import RiskControls
 
 
 def calculate_kelly_fraction(
@@ -169,7 +170,6 @@ def execute_trade(
             return None
         # Check buying power
         if account_info:
-            buying_power = account_info.get("buying_power", 0)
             cash = account_info.get("cash", 0)
             current_price = get_current_price("ETH-USD")
             if current_price:
@@ -312,13 +312,13 @@ def get_account_info(trading_client) -> Optional[Dict]:
         return None
 
 
-def check_stop_loss(position_info: dict, signal_info: dict, max_drawdown: float = 0.08) -> Tuple[bool, str]:
+def check_stop_loss(position_info: dict, signal_info: dict, max_drawdown: float = 0.05) -> Tuple[bool, str]:
     """Check if stop loss should be triggered based on position entry price.
 
     Args:
         position_info: Dict from get_position() with entry price, current price, P&L
         signal_info: Dict from analyze_live_signal() with volatility_stop
-        max_drawdown: Maximum allowed drawdown (default 8%)
+        max_drawdown: Maximum allowed drawdown (default 5%)
 
     Returns:
         Tuple of (should_exit: bool, reason: str)
@@ -334,12 +334,12 @@ def check_stop_loss(position_info: dict, signal_info: dict, max_drawdown: float 
     if entry_price <= 0 or current_price <= 0:
         return False, "Invalid price data"
 
-    # Check 1: Max Drawdown Exit (8% from entry)
+    # Check 1: Max Drawdown Exit (5% from entry)
     # For long positions, negative PL means loss
     # For short positions, positive PL means loss (opposite)
     if qty > 0:  # Long position
         drawdown_pct = unrealized_plpc  # This is in percentage terms (e.g., -5.23 for -5.23%)
-        # Convert max_drawdown from decimal to percentage (0.08 -> 8.0)
+        # Convert max_drawdown from decimal to percentage (0.05 -> 5.0)
         max_drawdown_pct = max_drawdown * 100
         if drawdown_pct <= -max_drawdown_pct:
             actual_drawdown = abs(drawdown_pct)
@@ -384,7 +384,7 @@ def analyze_live_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
                 # Risk-focused parameters (no ML, simple FGI thresholds)
                 fear_entry_threshold=30,  # Enter when FGI <= 30 (extreme fear)
                 greed_exit_threshold=70,  # Exit when FGI >= 70 (extreme greed)
-                max_drawdown_exit=0.08,  # Exit if 8% loss
+                max_drawdown_exit=0.05,  # Exit if 5% loss
                 _volatility_stop_multiplier=1.5,  # Volatility-based stop
                 pred_series=None,  # Disable ML for live trading
                 enable_multi_tf=False,  # Disable multi-TF for simplicity
@@ -420,7 +420,7 @@ def analyze_test_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
                 # Risk-focused parameters (no ML, simple FGI thresholds)
                 fear_entry_threshold=30,  # Enter when FGI <= 30 (extreme fear)
                 greed_exit_threshold=70,  # Exit when FGI >= 70 (extreme greed)
-                max_drawdown_exit=0.08,  # Exit if 8% loss
+                max_drawdown_exit=0.05,  # Exit if 5% loss
                 _volatility_stop_multiplier=1.5,  # Volatility-based stop
                 pred_series=None,  # Disable ML for live trading
                 enable_multi_tf=False,  # Disable multi-TF for simplicity
@@ -533,7 +533,7 @@ def should_trade(
 
         quantity = (max_position_value / price) * 0.95  # 5% buffer
         quantity = round(quantity, 6)
-        return ("sell", max(quantity, 0.0001))  # Sell to short
+        return ("short", max(quantity, 0.0001))
 
     # Long position exit
     elif signal == "sell" and current_position > 0:
@@ -544,6 +544,40 @@ def should_trade(
         return ("buy", abs(current_position))  # Buy to cover short
 
     return ("hold", 0.0)
+
+
+def should_trade_with_position_limit(
+    signal_info: dict,
+    position_info: dict,
+    is_live: bool = False,
+    account_info: Optional[Dict] = None,
+    risk_controls: 'RiskControls' = None,
+) -> Tuple[str, float]:
+    """
+    Wrapper around should_trade that enforces position size limits.
+
+    This function calls should_trade to get the signal and quantity,
+    then applies the 5% position size limit check.
+    """
+    # Get initial trade decision
+    action, qty = should_trade(signal_info, position_info, is_live, account_info)
+
+    # Only check position size limits for new positions (buy/short)
+    if action in ("buy", "short") and risk_controls and is_live and account_info:
+        price = signal_info.get("indicators", {}).get("price", 0)
+        equity = account_info.get("equity", 0)
+
+        if price > 0 and equity > 0:
+            allowed, adjusted_qty, reason = risk_controls.check_position_size(
+                qty, price, equity
+            )
+
+            if not allowed:
+                print(f"  ⚠️  {reason}")
+                # Use adjusted quantity
+                return (action, adjusted_qty)
+
+    return action, qty
 
 
 def should_trade_test(signal_info: dict, current_eth: float) -> Tuple[str, float]:
@@ -582,6 +616,44 @@ def should_trade_test(signal_info: dict, current_eth: float) -> Tuple[str, float
         quantity = (max_position_value / price) * 0.95
         quantity = round(quantity, 6)
         return ("buy", max(quantity, 0.0001))
+
+    elif signal == "buy" and current_eth > 0:
+        # Check if we can add to the existing position (only if profitable)
+        portfolio_state = load_test_state()
+        entry_price = portfolio_state.get("entry_price", 0)
+
+        if entry_price > 0 and price > entry_price:
+            # Position is profitable - allow adding to it (trail a winner)
+            unrealized_pnl_pct = ((price - entry_price) / entry_price) * 100
+
+            # Only add if position has at least 2% profit
+            if unrealized_pnl_pct >= 2.0:
+                portfolio_value = portfolio_state["cash"] + (current_eth * price)
+                current_position_value = current_eth * price
+                max_position_pct = 0.05  # Max 5% of portfolio in one position
+
+                # Can only add up to max position size
+                max_position_value = portfolio_value * max_position_pct
+                remaining_allowance = max_position_value - current_position_value
+
+                if remaining_allowance > 0:
+                    # Use smaller Kelly fraction for adding to position (50% of normal)
+                    hist_perf = get_historical_performance()
+                    kelly_fraction = calculate_kelly_fraction(
+                        hist_perf["win_rate"],
+                        hist_perf["avg_win_return"],
+                        hist_perf["avg_loss_return"],
+                    ) * 0.5
+
+                    add_amount = min(portfolio_state["cash"] * kelly_fraction, remaining_allowance)
+                    quantity = (add_amount / price) * 0.95
+                    quantity = round(quantity, 6)
+
+                    if quantity > 0.0001:
+                        return ("buy", quantity)
+
+        # Hold - either not profitable or would exceed max position size
+        return ("hold", 0.0)
 
     elif signal == "short" and current_eth == 0:
         # Load current portfolio state to get cash
@@ -759,7 +831,17 @@ def run_test_trading(fgi_df: pd.DataFrame):
                         save_test_state(portfolio_state)
                     else:
                         if portfolio_state["eth_held"] > 0:
-                            print("  No trade: Holding long position")
+                            entry_price = portfolio_state.get("entry_price", 0)
+                            if entry_price > 0:
+                                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                                if pnl_pct >= 2.0:
+                                    print(f"  No trade: At max position size or insufficient cash (P&L: +{pnl_pct:.1f}%)")
+                                elif current_price > entry_price:
+                                    print(f"  No trade: Position profitable but below 2% threshold (P&L: +{pnl_pct:.1f}%)")
+                                else:
+                                    print(f"  No trade: Position not profitable (P&L: {pnl_pct:.1f}%)")
+                            else:
+                                print("  No trade: Holding long position")
                         else:
                             print("  No trade: Waiting for BUY signal")
 
@@ -848,6 +930,20 @@ def run_live_trading(fgi_df: pd.DataFrame):
         print("Press Ctrl+C to stop")
         print("-" * 60)
 
+        # Initialize risk controls and filters
+        risk_controls = RiskControls()
+
+        print("\n🛡️ RISK CONTROLS ACTIVE:")
+        print("  • Daily Loss Limit: 2%")
+        print("  • Time Exit: 14 days")
+        print("  • Trailing Stop: 3%")
+        print("  • Max Drawdown Stop: 5%")
+        print("  • Position Size Limit: 5% max")
+        print("\n📊 SIGNAL FILTERS ACTIVE:")
+        print("  • Trend Filter: 50-day SMA")
+        print("  • Volume Filter: 1.2x average")
+        print("-" * 60)
+
         trade_log = []
         try:
             while True:
@@ -863,6 +959,38 @@ def run_live_trading(fgi_df: pd.DataFrame):
 
                     position_info = get_position(SYMBOL, TRADING_CLIENT)
                     # Position details already printed in get_position()
+
+                    # Check all risk controls (daily limit, trailing stop, time exit)
+                    current_price = position_info.get("current_price", 0)
+                    should_stop_risk, risk_reason = risk_controls.check_all_risks(
+                        SYMBOL, position_info, current_price, account_info.get("equity", 0)
+                    )
+                    if should_stop_risk:
+                        print(f"\n  🚨 RISK CONTROL: {risk_reason}")
+
+                        # If it's a position-specific risk (trailing stop, time exit), close the position
+                        position_qty = position_info.get("qty", 0.0)
+                        if position_qty != 0 and any(x in risk_reason for x in ["Trailing stop", "Time exit"]):
+                            action = "sell"
+                            qty = abs(position_qty)
+                            print(f"  >>> RISK EXIT: {action.upper()} {qty:.6f} {SYMBOL} <<<")
+                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info)
+                            if order:
+                                risk_controls.record_position_exit(SYMBOL)
+                                trade_log.append({
+                                    "time": now,
+                                    "action": action,
+                                    "qty": qty,
+                                    "price": current_price,
+                                    "reason": risk_reason,
+                                })
+
+                        # If daily limit hit, stop all trading for the day
+                        if "Daily loss limit" in risk_reason:
+                            print("\n  ⛔ DAILY LOSS LIMIT REACHED - TRADING HALTED")
+                            import time
+                            time.sleep(CHECK_INTERVAL)
+                            continue
 
                     signal_info = analyze_live_signal(fgi_df)
                     if signal_info and "indicators" in signal_info:
@@ -887,7 +1015,7 @@ def run_live_trading(fgi_df: pd.DataFrame):
                         # CRITICAL: Check stop losses FIRST if holding a position
                         position_qty = position_info.get("qty", 0.0)
                         if position_qty != 0:
-                            should_exit, exit_reason = check_stop_loss(position_info, signal_info, max_drawdown=0.08)
+                            should_exit, exit_reason = check_stop_loss(position_info, signal_info, max_drawdown=0.05)
                             if should_exit:
                                 print(f"\n  🚨 STOP LOSS TRIGGERED: {exit_reason}")
                                 # Force sell the entire position
@@ -914,11 +1042,12 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                 continue
 
                         # Normal trading logic
-                        action, qty = should_trade(
+                        action, qty = should_trade_with_position_limit(
                             signal_info,
                             position_info,
                             is_live=True,
                             account_info=account_info,
+                            risk_controls=risk_controls,
                         )
 
                         if action != "hold":
@@ -929,6 +1058,11 @@ def run_live_trading(fgi_df: pd.DataFrame):
                             order_id = order.id if order else None
                             if order:  # Only log successful trades
                                 log_trade(signal_info, action, qty, order_id)
+                                # Record position entry/exit for risk controls
+                                if action == "buy":
+                                    risk_controls.record_position_entry(SYMBOL, current_price)
+                                elif action == "sell":
+                                    risk_controls.record_position_exit(SYMBOL)
                             trade_log.append(
                                 {
                                     "time": now,
@@ -942,6 +1076,12 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                 print("  No trade: Holding long position")
                             else:
                                 print("  No trade: Waiting for BUY signal")
+
+                        # Show risk control status
+                        risk_status = risk_controls.get_status_summary()
+                        if risk_status["daily_limits"]["num_trades"] > 0:
+                            daily = risk_status["daily_limits"]
+                            print(f"  Daily P&L: {daily['daily_pnl_pct']:.2%} (${daily['daily_pnl_$']:.2f}) | Trades: {daily['num_trades']} | Loss limit remaining: {daily['remaining_loss_limit']:.2%}")
 
                     else:
                         print("  Could not analyze signal (data fetch error)")

@@ -1,0 +1,17 @@
+# Staging environment configuration
+# Pre-production testing environment
+
+trading:
+  initial_capital: 10000  # Higher capital for realistic testing
+  use_advanced_ml: true  # Test advanced ML models
+
+api:
+  alpaca_base_url: "https://paper-api.alpaca.markets"  # Still paper trading
+
+monitoring:
+  email_enabled: true  # Enable email alerts
+  health_check_interval_seconds: 60
+
+logging:
+  log_level: "INFO"
+  json_logs: true  # Structured logs for analysis

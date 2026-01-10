@@ -1,0 +1,14 @@
+# Development environment configuration
+# Overrides base.yaml settings
+
+trading:
+  initial_capital: 1000  # Lower capital for testing
+  use_advanced_ml: false  # Disable advanced ML for faster iteration
+
+monitoring:
+  email_enabled: false  # No emails in dev
+  health_check_interval_seconds: 30  # More frequent checks
+
+logging:
+  log_level: "DEBUG"  # Verbose logging
+  json_logs: false  # Human-readable logs

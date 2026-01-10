@@ -78,7 +78,7 @@ def generate_signal(
     # Risk-focused parameters for 2026
     fear_entry_threshold: int = 30,
     greed_exit_threshold: int = 70,
-    max_drawdown_exit: float = 0.08,
+    max_drawdown_exit: float = 0.05,
     _volatility_stop_multiplier: float = 1.5,
     _volatility_lookback: int = 20,
     # New parameters for trend-following
