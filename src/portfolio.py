@@ -71,7 +71,7 @@ def load_test_state() -> dict:
             print(f"Error loading test state: {e}")
     return {
         "cash": INITIAL_CAPITAL,
-        "btc_held": 0.0,
+        "eth_held": 0.0,
         "trades": [],
         "initialized": False,
     }
@@ -101,7 +101,7 @@ def simulate_trade(
         cost = price * qty * (1 + taker_fee)
         if state["cash"] >= cost:
             state["cash"] -= cost
-            state["btc_held"] += qty
+            state["eth_held"] += qty
             state["trades"].append(
                 {
                     "time": datetime.now().isoformat(),
@@ -119,10 +119,10 @@ def simulate_trade(
             print(f"  SIMULATED BUY FAILED: Insufficient cash ${state['cash']:.2f}")
 
     elif side.lower() == "sell":
-        if state["btc_held"] >= qty:
+        if state["eth_held"] >= qty:
             proceeds = price * qty * (1 - maker_fee)
             state["cash"] += proceeds
-            state["btc_held"] -= qty
+            state["eth_held"] -= qty
             state["trades"].append(
                 {
                     "time": datetime.now().isoformat(),
@@ -137,11 +137,11 @@ def simulate_trade(
                 f"  SIMULATED SELL: {qty:.6f} @ ${price:,.2f} (fee: ${price * qty - proceeds:.4f})"
             )
         else:
-            print(f"  SIMULATED SELL FAILED: Insufficient BTC {state['btc_held']:.6f}")
+            print(f"  SIMULATED SELL FAILED: Insufficient ETH {state['eth_held']:.6f}")
 
     return state
 
 
 def get_test_portfolio_value(state: dict, current_price: float) -> float:
     """Calculate total portfolio value in test mode."""
-    return state["cash"] + state["btc_held"] * current_price
+    return state["cash"] + state["eth_held"] * current_price

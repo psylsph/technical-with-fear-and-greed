@@ -1,0 +1,54 @@
+# Live Trading Configuration
+# Copy this file to config.yaml and fill in your API keys
+
+TRADING_MODE: "paper"  # Options: paper, live, backtest
+
+PAPER_TRADING:
+  INITIAL_CAPITAL: 10000.0
+  POSITION_SIZE_PCT: 0.05  # 5% of capital per trade
+
+LIVE_TRADING:
+  # API Keys - GET FROM ENVIRONMENT VARIABLES
+  ALPACA_API_KEY: "${ALPACA_API_KEY}"
+  ALPACA_SECRET_KEY: "${ALPACA_SECRET_KEY}"
+  COINBASE_API_KEY: "${COINBASE_API_KEY}"
+  COINBASE_SECRET_KEY: "${COINBASE_SECRET_KEY}"
+
+  EXCHANGE: "coinbase"  # Options: coinbase, alpaca, binance
+  POSITION_SIZE_PCT: 0.10  # 10% of capital per trade
+  MAX_POSITIONS: 3
+  MAX_DAILY_TRADES: 5
+
+STRATEGY:
+  ASSET: "ETH-USD"
+  GRANULARITY: "ONE_DAY"
+
+  # Risk Management
+  MAX_DRAWDOWN_PCT: 0.22  # 22% max drawdown
+  TRAILING_STOP_PCT: 0.0224  # 2.24% trailing stop
+  STOP_LOSS_PCT: 0.05  # 5% stop loss
+
+  # Entry/Exit thresholds
+  BUY_QUANTILE: 0.28  # Buy when FGI/RSI sentiment in bottom 28%
+  SELL_QUANTILE: 0.67  # Sell when FGI/RSI sentiment in top 33%
+
+  # RSI Settings
+  RSI_WINDOW: 14
+  RSI_OVERSOLD: 30
+  RSI_OVERBOUGHT: 70
+
+NOTIFICATIONS:
+  ENABLED: false
+  TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+  TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+  EMAIL_ENABLED: false
+  EMAIL_TO: "your-email@example.com"
+
+LOGGING:
+  LEVEL: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  FILE: "trading.log"
+
+PERFORMANCE:
+  TRACK_PERFORMANCE: true
+  DAILY_REPORT: true
+  WEEKLY_REPORT: true

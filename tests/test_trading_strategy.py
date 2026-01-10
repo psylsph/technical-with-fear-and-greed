@@ -129,9 +129,7 @@ class TestDataFetchers(unittest.TestCase):
         """Test getting current FGI value."""
         from src.data.data_fetchers import get_current_fgi
 
-        mock_response = {
-            "data": [{"value": "45", "value_classification": "Neutral"}]
-        }
+        mock_response = {"data": [{"value": "45", "value_classification": "Neutral"}]}
 
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = mock_response
@@ -518,7 +516,7 @@ class TestStrategy(unittest.TestCase):
         # Create prices with low FGI
         low_fgi = self.fgi.copy()
         low_fgi["fgi_value"] = 25
-        
+
         signal = generate_signal(
             self.prices, low_fgi, rsi_window=14, buy_quantile=0.2, sell_quantile=0.8
         )
@@ -579,7 +577,7 @@ class TestStrategy(unittest.TestCase):
         # Empty FGI dataframe should trigger error
         empty_fgi = pd.DataFrame({"fgi_value": [], "fgi_classification": []})
         empty_fgi.index = pd.DatetimeIndex(empty_fgi.index)
-        
+
         signal = generate_signal(future_prices, empty_fgi)
 
         self.assertIn("signal", signal)
@@ -712,17 +710,15 @@ class TestTradingEngine(unittest.TestCase):
         """Test live signal analysis with error."""
         from src.trading.trading_engine import analyze_live_signal
 
-        # Mock to return None
-        with patch("src.trading.trading_engine.analyze_live_signal", return_value=None):
-            result = analyze_live_signal(self.fgi)
-            # Should handle None return gracefully
-            self.assertIsNone(result)
+        # Test with invalid symbol (should return None)
+        result = analyze_live_signal(self.fgi, "INVALID-SYMBOL")
+        # Should handle error gracefully
+        self.assertIsNone(result)
 
     def test_analyze_live_signal_success(self):
         """Test live signal analysis returns dict with expected keys."""
-        # Just verify the function exists and can be called
         from src.trading.trading_engine import analyze_live_signal
-        
+
         # The function should exist and be callable
         self.assertTrue(callable(analyze_live_signal))
 
@@ -730,9 +726,7 @@ class TestTradingEngine(unittest.TestCase):
         """Test trade logging."""
         from src.trading.trading_engine import log_trade
 
-        signal_info = {
-            "indicators": {"price": 50000.0, "fgi": 45, "rsi": 60.0}
-        }
+        signal_info = {"indicators": {"price": 50000.0, "fgi": 45, "rsi": 60.0}}
 
         with tempfile.TemporaryDirectory() as temp_dir:
             from src.trading import trading_engine
@@ -750,7 +744,9 @@ class TestTradingEngine(unittest.TestCase):
                 with open(log_file_path) as f:
                     logs = json.load(f)
                     # Check that our trade is in the logs
-                    self.assertTrue(any(log["order_id"] == "test_order_id" for log in logs))
+                    self.assertTrue(
+                        any(log["order_id"] == "test_order_id" for log in logs)
+                    )
             finally:
                 trading_engine.PROJECT_ROOT = original_log_file
 
@@ -1039,7 +1035,6 @@ class TestMultiTimeframe(unittest.TestCase):
         self.assertGreater(bullish_days, 50)  # More than half bullish
 
 
-
 if __name__ == "__main__":
     unittest.main()
 
@@ -1133,8 +1128,6 @@ class TestSentimentComprehensive(unittest.TestCase):
             self.assertTrue(all(0 <= v <= 100 for v in valid_values))
 
 
-
-
 class TestMLModelComprehensive(unittest.TestCase):
     """Comprehensive tests for ML model module."""
 
@@ -1215,6 +1208,8 @@ class TestMLModelComprehensive(unittest.TestCase):
 
         self.assertIsNotNone(model)
         self.assertIsNotNone(predictions)
+
+
 class TestStrategyComprehensive(unittest.TestCase):
     """Comprehensive tests for strategy module."""
 
@@ -1270,9 +1265,7 @@ class TestStrategyComprehensive(unittest.TestCase):
             index=self.prices.index,
         )
 
-        result = generate_signal(
-            self.prices, high_fgi, enable_short_selling=True
-        )
+        result = generate_signal(self.prices, high_fgi, enable_short_selling=True)
 
         self.assertIn("signal", result)
 
@@ -1286,9 +1279,7 @@ class TestStrategyComprehensive(unittest.TestCase):
             index=self.prices.index,
         )
 
-        result = generate_signal(
-            self.prices, low_fgi, enable_short_selling=True
-        )
+        result = generate_signal(self.prices, low_fgi, enable_short_selling=True)
 
         self.assertIn("signal", result)
 
@@ -1298,9 +1289,7 @@ class TestStrategyComprehensive(unittest.TestCase):
 
         with patch("src.data.data_fetchers.fetch_crypto_news_sentiment") as mock_news:
             mock_news.return_value = {"sentiment_score": 0.8}
-            result = generate_signal(
-                self.prices, self.fgi, enable_news_sentiment=True
-            )
+            result = generate_signal(self.prices, self.fgi, enable_news_sentiment=True)
 
         self.assertIn("signal", result)
         self.assertIn("indicators", result)
@@ -1311,9 +1300,7 @@ class TestStrategyComprehensive(unittest.TestCase):
 
         with patch("src.data.data_fetchers.fetch_options_flow") as mock_options:
             mock_options.return_value = {"fear_gauge": 0.3}
-            result = generate_signal(
-                self.prices, self.fgi, enable_options_flow=True
-            )
+            result = generate_signal(self.prices, self.fgi, enable_options_flow=True)
 
         self.assertIn("signal", result)
         self.assertIn("indicators", result)
@@ -1432,7 +1419,7 @@ class TestMLEnsembleAndLSTM(unittest.TestCase):
         """Set up test data."""
         dates = pd.date_range("2023-01-01", periods=180)
         prices = [100 + i for i in range(180)]
-        
+
         self.ohlcv = pd.DataFrame(
             {
                 "open": prices,
@@ -1491,9 +1478,16 @@ class TestMLEnsembleAndLSTM(unittest.TestCase):
         ml_df = prepare_ml_data(self.ohlcv, self.fgi, rsi)
 
         expected_features = [
-            "fgi", "rsi", "returns_3d", "returns_7d", "returns_30d",
-            "volatility_7d", "volatility_30d", "atr_14d",
-            "volume", "volume_ratio"
+            "fgi",
+            "rsi",
+            "returns_3d",
+            "returns_7d",
+            "returns_30d",
+            "volatility_7d",
+            "volatility_30d",
+            "atr_14d",
+            "volume",
+            "volume_ratio",
         ]
 
         for feature in expected_features:
@@ -1511,7 +1505,9 @@ class TestMLEnsembleAndLSTM(unittest.TestCase):
         target_values = ml_df["target"].dropna()
         self.assertTrue(all(t in [0, 1, 2] for t in target_values))
 
+
 if __name__ == "__main__":
     import sys
+
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     unittest.main(verbosity=2)

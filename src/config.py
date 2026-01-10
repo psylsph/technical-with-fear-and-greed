@@ -13,15 +13,17 @@ TAKER_FEE = 0.0025
 DEFAULT_ASSET = "ETH-USD"
 
 # Best parameters found during optimization (used for live trading)
-# Based on multi-asset comparison: ETH offers best balance
-# Return: 74.99%, Sharpe: 1.75, Win Rate: 72.7%, Drawdown: 18.86%
+# Based on optimization for ETH-USD (2024-01-01 to 2025-01-01)
+# Return: 111.47%, Sharpe: 2.26, Win Rate: 68.8%, Drawdown: 18.42%
 BEST_PARAMS = {
     "rsi_window": 14,
-    "trail_pct": 0.08,
-    "buy_quantile": 0.20,
-    "sell_quantile": 0.80,
-    "ml_thresh": 0.50,
+    "trail_pct": 0.0224,
+    "buy_quantile": 0.28,
+    "sell_quantile": 0.67,
+    "ml_thresh": 0.41,
     "granularity": "ONE_DAY",
+    "atr_multiplier": 3.14,
+    "max_drawdown_pct": 0.22,
 }
 
 # Timeframe mappings

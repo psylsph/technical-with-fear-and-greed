@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 """
-Main entry point for the Fear & Greed Index Trading Strategy.
+Main entry point for Fear & Greed Index Trading Strategy.
 """
 
 import argparse
+import os
+from pathlib import Path
 
 import pandas as pd
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip())
 
 from src.config import (
     BEST_PARAMS,
@@ -66,19 +78,28 @@ def main():
         choices=["grid", "random", "walk_forward"],
         help="Type of optimization to run (default: grid)",
     )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Quiet mode - minimal output, status every minute or on trades",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
-    print("BTC Fear & Greed Index Strategy - Multiple Timeframes")
+    print("ETH Fear & Greed Index Strategy - Multiple Timeframes")
     print("=" * 60)
 
     # Load FGI data
+    print("Loading FGI data...")
     fgi_df = fetch_fear_greed_index()
+    print(f"FGI data loaded: {len(fgi_df)} rows")
     fgi_values_full = fgi_df["fgi_value"]
     print(f"\nFGI Range: {fgi_values_full.min()} - {fgi_values_full.max()}")
     print(f"Average FGI: {fgi_values_full.mean():.1f}")
     print(f"Fear days (FGI<=35): {(fgi_values_full <= 35).sum()}")
     print(f"Extreme Greed days (FGI>80): {(fgi_values_full > 80).sum()}")
+    print("FGI data processing complete")
 
     # Run backtesting
     if args.realtime:
@@ -125,11 +146,12 @@ def main():
         print("=" * 60)
 
         from src.trading.trading_engine import analyze_test_signal
+        from src.config import DEFAULT_ASSET
 
         signal_info = analyze_test_signal(fgi_df)
         if signal_info:
             ind = signal_info.get("indicators", {})
-            print(f"Current BTC Price: ${ind.get('price', 0):,.2f}")
+            print(f"Current {DEFAULT_ASSET} Price: ${ind.get('price', 0):,.2f}")
             print(
                 f"FGI: {ind.get('fgi', 0)} (Effective: Fear≤{ind.get('effective_fear_threshold', 30)}, Greed≥{ind.get('effective_greed_threshold', 70)})"
             )
@@ -188,7 +210,7 @@ def run_backtesting(fgi_df: pd.DataFrame):
         freq = GRANULARITY_TO_FREQ[granularity]
 
         # Use unified fetch (Coinbase primary, Yahoo fallback)
-        ohlcv_data = fetch_unified_price_data("BTC-USD", START_DATE, END_DATE, freq)
+        ohlcv_data = fetch_unified_price_data("ETH-USD", START_DATE, END_DATE, freq)
 
         if ohlcv_data is None or len(ohlcv_data) < 10:
             print(f"Insufficient data for {granularity}")
@@ -221,7 +243,7 @@ def run_backtesting(fgi_df: pd.DataFrame):
 
     # Train ML model with automated lookback optimization
     print("\nTraining ML Model (testing 90, 180, 365 day lookback periods)...")
-    daily_ohlcv = fetch_unified_price_data("BTC-USD", START_DATE, END_DATE, "1d")
+    daily_ohlcv = fetch_unified_price_data("ETH-USD", START_DATE, END_DATE, "1d")
 
     if daily_ohlcv is None or len(daily_ohlcv) < 30:
         print("Failed to fetch data for ML training")
@@ -321,7 +343,7 @@ def run_backtesting(fgi_df: pd.DataFrame):
 
                 # Use unified fetch (Coinbase primary, Yahoo fallback)
                 ohlcv_final = fetch_unified_price_data(
-                    "BTC-USD", START_DATE, END_DATE, freq
+                    "ETH-USD", START_DATE, END_DATE, freq
                 )
 
                 if ohlcv_final is not None and len(ohlcv_final) >= 10:
@@ -344,7 +366,7 @@ def run_backtesting(fgi_df: pd.DataFrame):
                     # Test with MTA (multi-timeframe analysis)
                     higher_freq = GRANULARITY_TO_FREQ["ONE_DAY"]
                     higher_ohlcv = fetch_unified_price_data(
-                        "BTC-USD", START_DATE, END_DATE, higher_freq
+                        "ETH-USD", START_DATE, END_DATE, higher_freq
                     )
 
                     higher_tf_indicators = calculate_higher_tf_indicators(
@@ -446,7 +468,7 @@ def run_multi_tf_backtesting(fgi_df: pd.DataFrame):
     print(f"\nFetching higher timeframe data: {higher_tf_granularity}...")
     higher_freq = GRANULARITY_TO_FREQ[higher_tf_granularity]
     higher_tf_ohlcv = fetch_unified_price_data(
-        "BTC-USD", START_DATE, END_DATE, higher_freq
+        "ETH-USD", START_DATE, END_DATE, higher_freq
     )
     if higher_tf_ohlcv is None or len(higher_tf_ohlcv) < 50:
         print("Insufficient higher timeframe data")
@@ -479,7 +501,7 @@ def run_multi_tf_backtesting(fgi_df: pd.DataFrame):
 
         # Use unified fetch (Coinbase primary, Yahoo fallback)
         lower_tf_ohlcv = fetch_unified_price_data(
-            "BTC-USD", START_DATE, END_DATE, lower_freq
+            "ETH-USD", START_DATE, END_DATE, lower_freq
         )
 
         if lower_tf_ohlcv is None or len(lower_tf_ohlcv) < 10:
@@ -636,8 +658,8 @@ def run_multi_tf_backtesting(fgi_df: pd.DataFrame):
 
 
 def analyze_multi_asset_signals(fgi_df: pd.DataFrame):
-    """Analyze current multi-asset signals for portfolio diversification."""
-    assets = ["BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD"]
+    """Analyze current ETH-USD signal for trading."""
+    assets = ["ETH-USD"]
 
     for asset in assets:
         print(f"\n{'=' * 60}")
@@ -654,14 +676,14 @@ def analyze_multi_asset_signals(fgi_df: pd.DataFrame):
             # Create price series
             price_series = pd.Series([asset_price], index=[pd.Timestamp.now(tz="UTC")])
 
-            # Generate signal (using same FGI data as BTC)
+            # Generate signal
             signal = generate_signal(
                 price_series,
                 fgi_df,
                 fear_entry_threshold=30,
                 greed_exit_threshold=70,
                 max_drawdown_exit=0.08,
-                volatility_stop_multiplier=1.5,
+                _volatility_stop_multiplier=1.5,
                 pred_series=None,
                 enable_multi_tf=False,
                 enable_short_selling=True,  # Enable short selling
@@ -695,43 +717,6 @@ def analyze_multi_asset_signals(fgi_df: pd.DataFrame):
         except Exception as e:
             print(f"Error analyzing {asset} signals: {e}")
 
-    try:
-        # Get current ETH price
-        eth_price = get_current_price("ETH-USD")
-        if eth_price is None:
-            print("Could not fetch ETH price")
-            return
-
-        # Create price series for ETH
-        eth_series = pd.Series([eth_price], index=[pd.Timestamp.now(tz="UTC")])
-
-        # Generate signal for ETH (using same FGI data as BTC)
-        signal = generate_signal(
-            eth_series,
-            fgi_df,
-            fear_entry_threshold=30,
-            greed_exit_threshold=70,
-            max_drawdown_exit=0.08,
-            volatility_stop_multiplier=1.5,
-            pred_series=None,
-            enable_multi_tf=False,
-            enable_short_selling=True,
-        )
-
-        indicators = signal.get("indicators", {})
-        print(f"Current ETH Price: ${eth_price:,.2f}")
-        print(
-            f"FGI: {indicators.get('fgi', 0)} (Effective: Fear≤{indicators.get('effective_fear_threshold', 30)}, Greed≥{indicators.get('effective_greed_threshold', 70)})"
-        )
-        print(f"Market Regime: {indicators.get('fgi_trend', 'unknown').upper()}")
-        print(f"Signal: {signal['signal'].upper()}")
-
-        # Add multi-asset analysis for diversification
-        analyze_multi_asset_signals(fgi_df)
-
-    except Exception as e:
-        print(f"Error analyzing ETH signals: {e}")
-
 
 def run_walk_forward_analysis(fgi_df: pd.DataFrame):
     """Run walk-forward analysis with rolling train/test windows."""
@@ -744,7 +729,7 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame):
     step_days = 30
 
     # Fetch daily data
-    daily_ohlcv = fetch_unified_price_data("BTC-USD", START_DATE, END_DATE, "1d")
+    daily_ohlcv = fetch_unified_price_data("ETH-USD", START_DATE, END_DATE, "1d")
 
     if daily_ohlcv is None or len(daily_ohlcv) < train_days + test_days:
         print("Insufficient data for walk-forward analysis")
@@ -814,7 +799,7 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame):
                     trend_filter_days=50,
                     fear_entry_threshold=fear_thresh,
                     greed_exit_threshold=greed_thresh,
-                    volatility_stop_multiplier=vol_mult,
+                    _volatility_stop_multiplier=vol_mult,
                     adx_threshold=adx_thresh,
                 )
                 window_results.append(
@@ -866,7 +851,7 @@ def run_simple_strategy(
     trend_filter_days: int = 50,
     fear_entry_threshold: int = 30,
     greed_exit_threshold: int = 70,
-    volatility_stop_multiplier: float = 1.5,
+    _volatility_stop_multiplier: float = 1.5,
     adx_threshold: float = 20.0,
 ) -> dict:
     """Run enhanced risk-focused strategy for 2026 market conditions with trend-following."""
@@ -910,7 +895,7 @@ def run_simple_strategy(
         if i >= volatility_lookback:
             recent_prices = close.iloc[i - volatility_lookback : i]
             volatility = recent_prices.std()
-            volatility_stop = price - (volatility * volatility_stop_multiplier)
+            volatility_stop = price - (volatility * _volatility_stop_multiplier)
         else:
             volatility_stop = price * (1 - max_drawdown_exit)  # Default stop
 
@@ -1126,7 +1111,7 @@ def run_parameter_optimization(fgi_df: pd.DataFrame, optimization_type: str = "g
     print("=" * 70)
     print(f"Optimization type: {optimization_type.upper()}")
 
-    daily_ohlcv = fetch_unified_price_data("BTC-USD", START_DATE, END_DATE, "1d")
+    daily_ohlcv = fetch_unified_price_data("ETH-USD", START_DATE, END_DATE, "1d")
 
     if daily_ohlcv is None or len(daily_ohlcv) < 100:
         print("Insufficient data for optimization")

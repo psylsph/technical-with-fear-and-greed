@@ -1,5 +1,5 @@
 """
-Data fetching utilities with SQLite caching for market data and external APIs.
+Data fetching module for crypto and stock prices from multiple sources.
 """
 
 import json
@@ -8,12 +8,17 @@ import sqlite3
 import time
 import urllib.request
 from datetime import datetime, timedelta
-from typing import Optional, Dict
+from typing import Dict, Optional
 
+import numpy as np
 import pandas as pd
+
 import requests
-import vectorbt as vbt
 import yfinance as yf
+import vectorbt as vbt
+
+# Suppress future warning about downcasting
+pd.set_option("future.no_silent_downcasting", True)
 
 from ..config import CACHE_DIR, CDP_KEY_FILE, GRANULARITY_TO_SECONDS
 
@@ -494,7 +499,6 @@ def fetch_unified_price_data(
     Returns:
         DataFrame with OHLCV data indexed by timestamp
     """
-    import numpy as np
 
     # Map freq to granularity for Coinbase
     freq_to_granularity = {
@@ -622,7 +626,11 @@ def fetch_unified_price_data(
 
         # Fill missing volume from Coinbase with Yahoo (or NaN)
         if merged_data["volume"].isna().any():
-            merged_data["volume"] = merged_data["volume"].fillna(yahoo_df["volume"])
+            merged_data["volume"] = (
+                merged_data["volume"]
+                .fillna(yahoo_df["volume"])
+                .infer_objects(copy=False)
+            )
 
         print(
             f"  Merged result: {len(merged_data)} bars ({len(coinbase_data)} from Coinbase + {len(yahoo_only)} from Yahoo)"

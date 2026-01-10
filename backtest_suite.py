@@ -42,6 +42,14 @@ ASSETS = {
         "fetcher": lambda s, e, f: fetch_xrp_price_data(s, e, f),
         "name": "Ripple",
     },
+    "SOL-USD": {
+        "fetcher": lambda s, e, f: fetch_unified_price_data("SOL-USD", s, e, f),
+        "name": "Solana",
+    },
+    "DOGE-USD": {
+        "fetcher": lambda s, e, f: fetch_unified_price_data("DOGE-USD", s, e, f),
+        "name": "Dogecoin",
+    },
 }
 
 DEFAULT_PARAMS = {
@@ -136,6 +144,61 @@ def run_single_asset(
         }
     except Exception as e:
         return {"error": str(e), "asset": asset_info["name"], "symbol": asset_symbol}
+
+
+def compare_selected_assets(asset_list, start_date, end_date, params):
+    """Compare selected assets."""
+    print("\n" + "=" * 70)
+    print("MULTI-ASSET STRATEGY COMPARISON")
+    print("=" * 70)
+    print(f"\nPeriod: {start_date} to {end_date}")
+    print(f"Assets: {', '.join(asset_list)}")
+
+    results = {}
+    for asset_symbol in asset_list:
+        if asset_symbol not in ASSETS:
+            print(f"\nWarning: {asset_symbol} not recognized, skipping")
+            continue
+        result = run_single_asset(asset_symbol, start_date, end_date, params)
+        results[asset_symbol] = result
+
+    print("\n" + "=" * 90)
+    print("COMPARISON TABLE")
+    print("=" * 90)
+    print("\nAsset       Return %   Sharpe    Win Rate   Drawdown   Trades   Benchmark")
+    print("-" * 90)
+
+    valid = {k: v for k, v in results.items() if not v.get("error")}
+    for asset_symbol, result in results.items():
+        if result.get("error"):
+            print(f"{result['asset']:<12} ERROR")
+        else:
+            print(
+                "{:12} {:>10.2f}% {:>9.2f} {:>10.1f}% {:>10.2f}% {:>7} {:>10.2f}%".format(
+                    result["asset"],
+                    result["total_return"],
+                    result["sharpe_ratio"],
+                    result["win_rate"],
+                    result["max_drawdown"],
+                    int(result["total_trades"]),
+                    result["benchmark_return"],
+                )
+            )
+
+    if valid:
+        ranked = sorted(valid.items(), key=lambda x: x[1]["sharpe_ratio"], reverse=True)
+        print("\n" + "=" * 70)
+        print("RECOMMENDATION")
+        print("=" * 70)
+        winner = ranked[0][1]
+        print(
+            f"\nBest risk-adjusted: {winner['asset']} (Sharpe: {winner['sharpe_ratio']:.2f})"
+        )
+        print(
+            f"  Return: {winner['total_return']:.2f}% | Drawdown: {winner['max_drawdown']:.2f}%"
+        )
+
+    return results
 
 
 def compare_assets(start_date: str, end_date: str, params: Dict):
@@ -260,8 +323,13 @@ def main():
         choices=list(ASSETS.keys()),
         help="Asset to trade (default: ETH-USD)",
     )
-    parser.add_argument("--start", default="2024-01-01", help="Start date (YYYY-MM-DD)")
-    parser.add_argument("--end", default="2025-01-01", help="End date (YYYY-MM-DD)")
+    parser.add_argument(
+        "--assets",
+        default="",
+        help="Comma-separated assets to compare (e.g., BTC-USD,ETH-USD,SOL-USD)",
+    )
+    parser.add_argument("--start", default="2024-06-01", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end", default="2024-12-31", help="End date (YYYY-MM-DD)")
     parser.add_argument("--compare", action="store_true", help="Compare all assets")
     parser.add_argument(
         "--walk-forward", action="store_true", help="Walk-forward analysis"
@@ -286,7 +354,10 @@ def main():
         params.update(override)
         print(f"Using custom params: {override}")
 
-    if args.compare:
+    if args.assets:
+        selected_assets = [a.strip() for a in args.assets.split(",")]
+        compare_selected_assets(selected_assets, args.start, args.end, params)
+    elif args.compare:
         compare_assets(args.start, args.end, params)
     elif args.walk_forward:
         walk_forward_analysis(args.start, args.end, params)
