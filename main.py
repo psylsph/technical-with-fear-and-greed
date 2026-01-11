@@ -38,10 +38,13 @@ from src.data.data_fetchers import (
 from src.indicators import calculate_adx
 from src.ml.ml_model import train_ml_model
 from src.strategy import run_strategy, generate_signal
+from src.multi_asset_config import asset_registry, get_asset_config
+from src.multi_asset_trading import trading_engine, execute_multi_asset_trades
 
 
 def main():
     """Main application entry point."""
+    print("DEBUG: main() function starting")
     parser = argparse.ArgumentParser(description="Fear & Greed Trading Strategy")
     parser.add_argument(
         "--live", action="store_true", help="Run live trading with real money"
@@ -104,6 +107,22 @@ def main():
         action="store_true",
         help="Use ML model predictions for walk-forward analysis trading decisions (default: use fixed thresholds)",
     )
+    parser.add_argument(
+        "--multi-asset",
+        action="store_true",
+        help="Enable multi-asset trading with tailored parameters per asset",
+    )
+    parser.add_argument(
+        "--assets",
+        type=str,
+        default="ETH-USD,BTC-USD,SOL-USD",
+        help="Comma-separated list of assets to trade (default: ETH-USD,BTC-USD,SOL-USD)",
+    )
+    parser.add_argument(
+        "--show-assets",
+        action="store_true",
+        help="Show available assets and their configurations",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -118,6 +137,11 @@ def main():
     # Handle advanced ML training request
     if args.train_advanced:
         train_advanced_ml_models()
+        return
+    
+    # Handle show assets request
+    if args.show_assets:
+        show_available_assets()
         return
 
     # Load FGI data
@@ -170,59 +194,171 @@ def main():
         run_backtesting(fgi_df)
 
     elif args.test:
-        # Run a single test analysis instead of continuous trading
-        print("\n" + "=" * 60)
-        print("TEST MODE (Single Signal Analysis)")
-        print("=" * 60)
-
-        from src.trading.trading_engine import analyze_test_signal
-        from src.config import DEFAULT_ASSET
-
-        signal_info = analyze_test_signal(fgi_df)
-        if signal_info:
-            ind = signal_info.get("indicators", {})
-            print(f"Current {DEFAULT_ASSET} Price: ${ind.get('price', 0):,.2f}")
-            print(
-                f"FGI: {ind.get('fgi', 0)} (Effective: Fear≤{ind.get('effective_fear_threshold', 30)}, Greed≥{ind.get('effective_greed_threshold', 70)})"
+        # Parse assets
+        assets = [asset.strip() for asset in args.assets.split(",")]
+        
+        if args.multi_asset:
+            # Multi-asset test mode
+            print("\n" + "=" * 60)
+            print(f"MULTI-ASSET TEST MODE ({len(assets)} assets)")
+            print("=" * 60)
+            
+            # Update FGI data in trading engine
+            trading_engine.update_fgi_data()
+            
+            # Execute trades in test mode
+            trades = execute_multi_asset_trades(
+                symbols=assets,
+                is_live=False,
             )
-            print(f"Market Regime: {ind.get('fgi_trend', 'unknown').upper()}")
-            print(f"Signal: {signal_info['signal'].upper()}")
-            print(f"Position Size: {ind.get('position_size_pct', 0):.1f}% of portfolio")
-            print(f"Extreme Fear: {ind.get('is_extreme_fear', False)}")
-            print(f"Extreme Greed: {ind.get('is_extreme_greed', False)}")
-            print(f"Volatility Stop: ${ind.get('volatility_stop', 0):,.2f}")
-            print("\nEnhanced Risk-Focused Strategy for 2026:")
-            print("- Market regime detection (Bull/Bear/Sideways)")
-            print("- Dynamic position sizing based on volatility")
-            print("- Adaptive thresholds per market regime")
-            print("- Enter on fear, exit on greed or drawdown")
-            print("- Capital preservation in adverse conditions")
-
-            # Add performance insights
-            fgi_val = ind.get("fgi", 50)
-            if fgi_val <= 25:
-                print("\n🚨 EXTREME FEAR DETECTED - STRONG BUY SIGNAL")
-                print("   Market sentiment indicates panic selling")
-            elif fgi_val >= 75:
-                print("\n⚠️  EXTREME GREED DETECTED - TAKE PROFITS")
-                print("   Market sentiment indicates euphoria")
-            elif fgi_val <= 40:
-                print("\n📈 FEAR PRESENT - WATCH FOR ENTRIES")
-                print("   Market showing signs of capitulation")
-            elif fgi_val >= 60:
-                print("\n📉 GREED BUILDING - CONSIDER REDUCING RISK")
-                print("   Market showing signs of optimism")
-
-            # Analyze multi-asset signals for diversification
-            analyze_multi_asset_signals(fgi_df)
-
+            
+            # Show portfolio summary
+            print("\n" + "=" * 60)
+            print("PORTFOLIO SUMMARY")
+            print("=" * 60)
+            
+            summary = trading_engine.get_portfolio_summary()
+            print(f"Cash: ${summary['cash']:.2f}")
+            print(f"Total value: ${summary['total_value']:.2f}")
+            print(f"Total P&L: ${summary['total_pnl']:.2f} ({summary['pnl_pct']:.1f}%)")
+            print(f"Positions: {summary['num_positions']}")
+            print(f"Total trades: {summary['trade_count']}")
+            
+            if trades:
+                print(f"\nExecuted {len(trades)} trades:")
+                for symbol, trade in trades.items():
+                    print(f"  {symbol}: {trade['action']} {trade['quantity']:.6f} @ ${trade['price']:.2f}")
+            else:
+                print("\nNo trades executed (all signals were HOLD)")
+        
         else:
-            print("Could not analyze current market signal")
+            # Single asset test mode (backward compatible)
+            print("\n" + "=" * 60)
+            print("TEST MODE (Single Signal Analysis)")
+            print("=" * 60)
+
+            from src.trading.trading_engine import analyze_test_signal
+            from src.config import DEFAULT_ASSET
+
+            signal_info = analyze_test_signal(fgi_df)
+            if signal_info:
+                ind = signal_info.get("indicators", {})
+                print(f"Current {DEFAULT_ASSET} Price: ${ind.get('price', 0):,.2f}")
+                print(
+                    f"FGI: {ind.get('fgi', 0)} (Effective: Fear≤{ind.get('effective_fear_threshold', 30)}, Greed≥{ind.get('effective_greed_threshold', 70)})"
+                )
+                print(f"Market Regime: {ind.get('fgi_trend', 'unknown').upper()}")
+                print(f"Signal: {signal_info['signal'].upper()}")
+                print(f"Position Size: {ind.get('position_size_pct', 0):.1f}% of portfolio")
+                print(f"Extreme Fear: {ind.get('is_extreme_fear', False)}")
+                print(f"Extreme Greed: {ind.get('is_extreme_greed', False)}")
+                print(f"Volatility Stop: ${ind.get('volatility_stop', 0):,.2f}")
+                print("\nEnhanced Risk-Focused Strategy for 2026:")
+                print("- Market regime detection (Bull/Bear/Sideways)")
+                print("- Dynamic position sizing based on volatility")
+                print("- Adaptive thresholds per market regime")
+                print("- Enter on fear, exit on greed or drawdown")
+                print("- Capital preservation in adverse conditions")
+
+                # Add performance insights
+                fgi_val = ind.get("fgi", 50)
+                if fgi_val <= 25:
+                    print("\n🚨 EXTREME FEAR DETECTED - STRONG BUY SIGNAL")
+                    print("   Market sentiment indicates panic selling")
+                elif fgi_val >= 75:
+                    print("\n⚠️  EXTREME GREED DETECTED - TAKE PROFITS")
+                    print("   Market sentiment indicates euphoria")
+                elif fgi_val <= 40:
+                    print("\n📈 FEAR PRESENT - WATCH FOR ENTRIES")
+                    print("   Market showing signs of capitulation")
+                elif fgi_val >= 60:
+                    print("\n📉 GREED BUILDING - CONSIDER REDUCING RISK")
+                    print("   Market showing signs of optimism")
+
+                # Analyze multi-asset signals for diversification
+                analyze_multi_asset_signals(fgi_df)
+
+            else:
+                print("Could not analyze current market signal")
 
     elif args.live:
-        from src.trading.trading_engine import run_live_trading
-
-        run_live_trading(fgi_df)
+        print("DEBUG: Entering live trading mode")
+        # Parse assets
+        assets = [asset.strip() for asset in args.assets.split(",")]
+        
+        if args.multi_asset:
+            # Multi-asset live trading
+            print("\n" + "=" * 70)
+            print(f"MULTI-ASSET LIVE TRADING MODE ({len(assets)} assets)")
+            print("=" * 70)
+            
+            print(f"\nTrading assets: {', '.join(assets)}")
+            print("\nWARNING: This will execute REAL trades with REAL money!")
+            print("Make sure you have sufficient funds and understand the risks.")
+            
+            # Validate portfolio
+            from src.multi_asset_config import validate_asset_portfolio
+            is_valid, message = validate_asset_portfolio(assets)
+            if not is_valid:
+                print(f"\n❌ Portfolio validation failed: {message}")
+                print("Please adjust your asset selection.")
+                return
+            
+            # Check for live trading permissions
+            live_assets = []
+            for asset in assets:
+                config = get_asset_config(asset)
+                if config.live_trading_allowed:
+                    live_assets.append(asset)
+                else:
+                    print(f"⚠️  {asset} is not enabled for live trading (paper trading only)")
+            
+            if not live_assets:
+                print("\n❌ No assets enabled for live trading.")
+                print("Check asset configurations in src/multi_asset_config.py")
+                return
+            
+            print(f"\n✅ Live trading enabled for: {', '.join(live_assets)}")
+            
+            # Auto-confirm for live trading (removed manual confirmation)
+            print("\n" + "-"*70)
+            print("Starting live trading automatically...")
+            
+            # Update FGI data in trading engine
+            trading_engine.update_fgi_data()
+            
+            # Start continuous live trading monitor
+            print("\nStarting live trading monitor...")
+            print("Press Ctrl+C to stop\n")
+            
+            try:
+                import asyncio
+                from src.multi_asset_trading import monitor_assets_async
+                
+                print(f"DEBUG: Starting async monitoring for {live_assets}")
+                print("DEBUG: Interval: 300 seconds, Live: True")
+                
+                # Run async monitoring loop with live trading
+                asyncio.run(monitor_assets_async(
+                    symbols=live_assets,
+                    interval_seconds=300,  # Check every 5 minutes
+                    max_iterations=None,  # Run indefinitely
+                    is_live=True,  # Execute live trades
+                ))
+                
+                print("DEBUG: Async monitoring completed")
+            
+            except KeyboardInterrupt:
+                print("\n\nLive trading stopped by user.")
+            except Exception as e:
+                print(f"\n❌ Error in live trading: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        else:
+            # Single asset live trading (backward compatible)
+            from src.trading.trading_engine import run_live_trading
+            run_live_trading(fgi_df)
 
 
 def run_backtesting(fgi_df: pd.DataFrame):
@@ -1426,6 +1562,43 @@ def show_ml_status():
         import traceback
 
         traceback.print_exc()
+
+
+def show_available_assets():
+    """Show available assets and their configurations."""
+    print("\n" + "="*70)
+    print("AVAILABLE ASSETS FOR TRADING")
+    print("="*70)
+    
+    enabled_assets = asset_registry.get_enabled_assets()
+    live_assets = asset_registry.get_live_trading_assets()
+    
+    print(f"\nTotal enabled assets: {len(enabled_assets)}")
+    print(f"Live trading enabled: {len(live_assets)}")
+    
+    print("\n" + "-"*70)
+    print("ASSET DETAILS")
+    print("-"*70)
+    
+    for asset in enabled_assets:
+        print(f"\n{asset.symbol} ({asset.name})")
+        print(f"  Category: {asset.category.value}")
+        print(f"  Status: {'LIVE' if asset.live_trading_allowed else 'PAPER ONLY'}")
+        print(f"  Max Position: {asset.trading.max_position_size_pct:.1%}")
+        print(f"  Take Profit: {asset.trading.take_profit_pct:.1%}")
+        print(f"  Stop Loss: {asset.trading.stop_loss_pct:.1%}")
+        
+        if asset.historical_sharpe:
+            print(f"  Historical Sharpe: {asset.historical_sharpe:.2f}")
+        if asset.historical_win_rate:
+            print(f"  Historical Win Rate: {asset.historical_win_rate:.1%}")
+    
+    print("\n" + "-"*70)
+    print("USAGE EXAMPLES:")
+    print("-"*70)
+    print("  Single asset: python main.py --test --assets ETH-USD")
+    print("  Multi-asset:  python main.py --test --multi-asset --assets ETH-USD,BTC-USD,SOL-USD")
+    print("  Live trading: python main.py --live --multi-asset --assets ETH-USD,BTC-USD")
 
 
 def train_advanced_ml_models():

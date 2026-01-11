@@ -1,0 +1,51 @@
+# Ethereum (ETH-USD) Configuration
+# Blue chip asset - best risk-adjusted returns
+
+symbol: "ETH-USD"
+name: "Ethereum"
+category: "blue_chip"
+
+enabled: true
+live_trading_allowed: true
+paper_trading_only: false
+
+training:
+  rsi_window: 14
+  lookback_days: 730
+  ml_confidence_threshold: 0.65
+  ml_retrain_frequency_days: 30
+  validation_split: 0.2
+
+trading:
+  rsi_oversold: 30.0
+  rsi_overbought: 70.0
+  fgi_fear_threshold: 30.0
+  fgi_greed_threshold: 70.0
+  take_profit_pct: 0.20  # 5:1 risk-reward ratio
+  short_take_profit_pct: 0.12
+  stop_loss_pct: 0.04  # Tightened from 6% based on Monte Carlo
+  trailing_stop_pct: 0.03
+  max_position_size_pct: 0.07
+  max_drawdown_pct: 0.15
+  max_daily_loss_pct: 0.02
+  max_hold_days: 14
+  min_hold_bars: 3
+
+risk:
+  high_volatility_threshold: 0.04
+  low_volatility_threshold: 0.015
+  max_slippage_pct: 0.002
+  min_daily_volume_usd: 500000000  # $500M minimum daily volume
+  correlation_lookback_days: 90
+
+performance:
+  historical_sharpe: 2.26
+  historical_win_rate: 0.688
+  historical_max_drawdown: 0.1842
+  last_optimization_date: "2025-01-01"
+
+exchange:
+  preferred: "alpaca"
+  symbol_format: "ETHUSD"
+  min_order_size: 0.001
+  price_increment: 0.01

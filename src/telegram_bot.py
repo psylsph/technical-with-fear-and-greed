@@ -17,7 +17,7 @@ Setup:
 import asyncio
 import os
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import queue
 import threading
 
@@ -99,6 +99,94 @@ class TelegramBot:
         await self.application.bot.send_message(
             chat_id=self.chat_id, text=message, parse_mode=parse_mode
         )
+
+    def send_portfolio_notification(
+        self,
+        portfolio_summary: Dict[str, Any],
+        positions: List[Dict[str, Any]],
+    ) -> bool:
+        """Send a portfolio summary notification for multi-asset trading.
+
+        Args:
+            portfolio_summary: Portfolio-level summary dict
+            positions: List of position dicts for all assets
+
+        Returns:
+            True if notification was sent
+        """
+        if not self.enabled:
+            return False
+
+        total_value = portfolio_summary.get("total_value", 0)
+        total_pnl = portfolio_summary.get("total_pnl", 0)
+        total_pnl_pct = portfolio_summary.get("total_pnl_pct", 0)
+        cash = portfolio_summary.get("cash", 0)
+        day_pnl = portfolio_summary.get("day_pnl", 0)
+
+        pnl_emoji = "🟢" if total_pnl >= 0 else "🔴"
+
+        message = "📊 *PORTFOLIO SUMMARY*\n\n"
+        message += f"*Total Value:* ${total_value:,.2f}\n"
+        message += f"*Cash:* ${cash:,.2f}\n"
+        message += f"{pnl_emoji} *Total P&L:* ${total_pnl:+,.2f} ({total_pnl_pct:+.1f}%)\n"
+        message += f"*Day P&L:* ${day_pnl:+,.2f}\n"
+
+        if positions:
+            long_value = sum(
+                pos.get("value", 0) for pos in positions if pos.get("qty", 0) > 0
+            )
+            short_value = sum(
+                abs(pos.get("value", 0)) for pos in positions if pos.get("qty", 0) < 0
+            )
+            message += f"\n*Long Positions:* ${long_value:,.2f}\n"
+            message += f"*Short Positions:* ${short_value:,.2f}\n"
+            message += f"*Total Positions:* {len(positions)}\n"
+
+        return self.send_notification(message)
+
+    def send_multi_asset_trade_notification(
+        self,
+        symbol: str,
+        action: str,
+        quantity: float,
+        price: float,
+        portfolio_value: float,
+        reason: str = "",
+    ) -> bool:
+        """Send a trade notification with portfolio context.
+
+        Args:
+            symbol: Trading symbol (e.g., "ETH-USD")
+            action: "buy" or "sell"
+            quantity: Quantity traded
+            price: Execution price
+            portfolio_value: Current portfolio value
+            reason: Reason for the trade
+
+        Returns:
+            True if notification was sent
+        """
+        if not self.enabled:
+            return False
+
+        emoji = "🟢" if action.lower() == "buy" else "🔴"
+        action_upper = action.upper()
+        trade_value = abs(quantity * price)
+        allocation = (trade_value / portfolio_value * 100) if portfolio_value > 0 else 0
+
+        message = f"{emoji} *{action_upper} {symbol}*\n\n"
+        message += f"*Quantity:* {abs(quantity):.6f}\n"
+        message += f"*Price:* ${price:,.2f}\n"
+        message += f"*Value:* ${trade_value:,.2f}\n"
+        message += f"*Portfolio:* ${portfolio_value:,.2f}\n"
+        message += f"*Allocation:* {allocation:.2f}%\n"
+
+        if reason:
+            message += f"*Reason:* {reason}\n"
+
+        message += f"\n*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+        return self.send_notification(message)
 
     def send_trade_notification(
         self,
@@ -572,6 +660,9 @@ Use /help to see available commands.
             await self.application.updater.start_polling(drop_pending_updates=True)
             print("Telegram: Polling active")
 
+            # Send startup notification
+            await self._send_startup_notification()
+
             # Keep the coroutine alive while polling (this will run forever)
             while self._running:
                 await asyncio.sleep(1)
@@ -646,3 +737,27 @@ def send_error_notification(error: str, context: str = "") -> bool:
     """Convenience function to send error notification."""
     bot = get_telegram_bot()
     return bot.send_error_notification(error, context)
+
+
+def send_portfolio_notification(
+    portfolio_summary: Dict[str, Any],
+    positions: List[Dict[str, Any]],
+) -> bool:
+    """Convenience function to send portfolio notification."""
+    bot = get_telegram_bot()
+    return bot.send_portfolio_notification(portfolio_summary, positions)
+
+
+def send_multi_asset_trade_notification(
+    symbol: str,
+    action: str,
+    quantity: float,
+    price: float,
+    portfolio_value: float,
+    reason: str = "",
+) -> bool:
+    """Convenience function to send multi-asset trade notification."""
+    bot = get_telegram_bot()
+    return bot.send_multi_asset_trade_notification(
+        symbol, action, quantity, price, portfolio_value, reason
+    )

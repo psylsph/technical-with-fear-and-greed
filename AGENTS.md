@@ -1,12 +1,22 @@
 # AGENTS.md - Guidelines for Agentic Coding Assistants
 
-This document provides guidelines for agents working in this repository.
-
 ## Project Overview
 
 Fear & Greed Trading Strategy - A quantitative trading system using FGI and RSI sentiment for cryptocurrency trading with short selling support.
 
-**Recommended Asset:** ETH-USD (best risk-adjusted returns)
+**Recommended Assets:** 
+- **ETH-USD**: Best overall risk-adjusted returns (Sharpe 2.26)
+- **XRP-USD**: Exceptional performance (172% return, Sharpe 2.39) - Now enabled for live trading
+
+## Active Work Items
+
+See [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for outstanding tasks (21 items pending across High/Medium/Low priority).
+
+### Current Focus: Multi-Asset Enhancement Phase
+1. **Multi-Asset Telegram Integration** - Extend Telegram bot for multi-asset trading
+2. **Configuration Migration** - Move hardcoded parameters to YAML config files  
+3. **Code Cleanup** - Remove unused files and consolidate duplicate code
+4. **Multi-Asset Alpaca Integration** - Extend Alpaca exchange support to multi-asset
 
 ## Build/Lint/Test Commands
 
@@ -15,7 +25,7 @@ Fear & Greed Trading Strategy - A quantitative trading system using FGI and RSI 
 source venv/bin/activate && python main.py
 ```
 
-### Backtest Suite (Recommended)
+### Backtest Suite
 ```bash
 python backtest_suite.py                          # Single asset backtest
 python backtest_suite.py --compare                # Multi-asset comparison
@@ -33,21 +43,41 @@ pip install -r requirements.txt
 ```bash
 python main.py --optimize --optimization-type grid        # Grid search
 python main.py --optimize --optimization-type random      # Random search
-python main.py --optimize --optimization-type walk_forward  # Walk-forward
 ```
 
-### Linting and Formatting (REQUIRED)
+### Configuration Migration & Cleanup Commands
 ```bash
-ruff check .      # Run ruff linter on entire codebase
-ruff check --fix .  # Auto-fix linting issues
-ruff format .     # Format code with ruff
+# Generate new YAML config structure
+python scripts/generate_configs.py
+
+# Validate configuration files
+python scripts/validate_configs.py
+
+# Clean up unused files (dry run)
+python scripts/cleanup.py --dry-run
+
+# Clean up unused files (actual)
+python scripts/cleanup.py
+
+# Test configuration loading
+python scripts/test_config_loading.py
+```
+
+### Linting and Formatting (REQUIRED before commit)
+```bash
+ruff check .              # Run ruff linter
+ruff check --fix .        # Auto-fix linting issues
+ruff format .             # Format code
+mypy .                    # Type checking (optional but recommended)
 ```
 
 ### Running Tests
 ```bash
-pytest              # Run all tests
-pytest -v           # Verbose output
-pytest -k "test_name"  # Run specific test
+pytest                    # Run all tests
+pytest -v                 # Verbose output
+pytest tests/test_*.py    # Run specific test file
+pytest -k "test_name"     # Run specific test by name
+pytest --cov             # With coverage report
 ```
 
 ### Required Verification After Every Change
@@ -55,44 +85,40 @@ pytest -k "test_name"  # Run specific test
 ruff check . && python main.py
 ```
 
-## Short Selling
-
-The strategy now supports both long and short positions:
-- **Long Entry:** RSI < 30, FGI/Sentiment < buy_quantile
-- **Short Entry:** RSI > 70, FGI/Sentiment > 75
-- **Short Exit:** RSI < 30, or 15% profit target, or trailing stop
-
 ## Code Style Guidelines
 
 ### General Principles
 - Follow PEP 8 style guide
-- Write clean, readable, and maintainable code
-- Keep functions focused and single-purpose
+- Write clean, readable, single-purpose functions
 - Use meaningful variable and function names
+- Keep functions under 50 lines when possible
 
 ### Imports
-Organize imports in three sections separated by blank lines:
-1. Standard library imports
-2. Third-party imports
-3. Local application imports
+Organize in three sections with blank lines:
+1. Standard library (os, sys, logging, etc.)
+2. Third-party (pandas, numpy, vectorbt, etc.)
+3. Local application (src.* modules)
 
-Example:
 ```python
+import logging
+from typing import Optional
+
 import pandas as pd
 import numpy as np
-
 import vectorbt as vbt
+
+from src.strategy import TradingStrategy
 ```
 
 ### Formatting
 - Use 4 spaces for indentation (no tabs)
 - Line length: 88 characters (ruff default)
-- Use ruff format for all code formatting
-- Add blank lines between function definitions and around major code blocks
+- Use `ruff format` for all formatting
+- Blank lines between functions and around major blocks
 
 ### Type Hints
-- Use type hints for function parameters and return values
-- Use the `typing` module for complex types (Optional, List, Dict, Union, etc.)
+- Use type hints for all function parameters and returns
+- Use `typing` module for complex types (Optional, List, Dict, Union)
 - Example:
 ```python
 from typing import Optional, List
@@ -101,16 +127,15 @@ def calculate_indicator(prices: pd.Series, window: int) -> pd.Series:
 ```
 
 ### Naming Conventions
-- **Functions and variables**: snake_case (e.g., `calculate_returns`, `close_prices`)
-- **Constants**: UPPER_SNAKE_CASE (e.g., `DEFAULT_WINDOW`, `MAX_POSITION`)
-- **Classes**: PascalCase (e.g., `TradingStrategy`, `PortfolioAnalyzer`)
-- Use descriptive names that indicate purpose
+- **Functions/variables**: snake_case (`calculate_returns`, `close_prices`)
+- **Constants**: UPPER_SNAKE_CASE (`DEFAULT_WINDOW`, `MAX_POSITION`)
+- **Classes**: PascalCase (`TradingStrategy`, `PortfolioAnalyzer`)
+- **Private methods**: `_leading_underscore`
 
 ### Error Handling
-- Use specific exception types rather than bare `except:` clauses
+- Use specific exception types, not bare `except:`
+- Log errors with meaningful messages before raising
 - Handle exceptions at the appropriate level
-- Log errors with meaningful messages
-- Example:
 ```python
 try:
     data = vbt.YFData.download(symbol, start=start_date, end=end_date)
@@ -120,16 +145,16 @@ except ValueError as e:
 ```
 
 ### Constants and Configuration
-- Define constants at the module level
-- Use ALL_CAPS for constant names
+- Define constants at module level in UPPER_SNAKE_CASE
 - Avoid magic numbers; use named constants
+- Use `src/config.py` for strategy parameters
 
 ### Documentation
-- Use docstrings for all public functions, classes, and modules
-- Follow Google-style docstrings:
+- Use Google-style docstrings for all public functions and classes
+- Include Args and Returns sections
 ```python
 def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float) -> float:
-    """Calculate the Sharpe ratio for a series of returns.
+    """Calculate the annualized Sharpe ratio.
 
     Args:
         returns: Series of asset returns
@@ -140,22 +165,27 @@ def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float) -> float:
     """
 ```
 
-### Vectorbt Specific Patterns
+### Vectorbt Patterns
 - Use `pd.DataFrame.vbt.signals.empty_like()` for signal placeholders
 - Use `Portfolio.from_signals()` for backtesting
-- Chain method calls where appropriate for readability
-- Handle vectorbt data fetching with type checking
+- Chain method calls for readability
 
 ### File Structure
-- Keep related functionality together
+- Keep related functionality together in `src/trading/`, `src/ml/`, `src/data/`
+- Tests in `tests/` directory
 - Use relative imports for local modules
-- Limit file length; split large files into logical components
+- Split large files into logical components
 
 ### Code Review Checklist
-- [ ] ruff check passes
-- [ ] ruff format applied
+- [ ] `ruff check` passes
+- [ ] `ruff format` applied
 - [ ] Type hints present and correct
-- [ ] No bare except clauses
+- [ ] No bare `except:` clauses
 - [ ] Docstrings on public functions
 - [ ] Constants extracted to module level
 - [ ] Meaningful variable names
+
+## Short Selling Strategy
+- **Long Entry:** RSI < 30, FGI/Sentiment < buy_quantile
+- **Short Entry:** RSI > 70, FGI/Sentiment > 75
+- **Short Exit:** RSI < 30, 15% profit target, or trailing stop

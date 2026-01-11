@@ -1,0 +1,51 @@
+# DOGE-USD Configuration
+# Meme coin - high volatility, paper trading only
+
+symbol: "DOGE-USD"
+name: "Dogecoin"
+category: "meme"
+
+enabled: true
+live_trading_allowed: false
+paper_trading_only: true
+
+training:
+  rsi_window: 14
+  lookback_days: 365
+  ml_confidence_threshold: 0.7
+  ml_retrain_frequency_days: 14
+  validation_split: 0.2
+
+trading:
+  rsi_oversold: 30.0
+  rsi_overbought: 70.0
+  fgi_fear_threshold: 25.0
+  fgi_greed_threshold: 75.0
+  take_profit_pct: 0.35
+  short_take_profit_pct: 0.20
+  stop_loss_pct: 0.08
+  trailing_stop_pct: 0.06
+  max_position_size_pct: 0.03
+  max_drawdown_pct: 0.12
+  max_daily_loss_pct: 0.015
+  max_hold_days: 7
+  min_hold_bars: 2
+
+risk:
+  high_volatility_threshold: 0.08
+  low_volatility_threshold: 0.03
+  max_slippage_pct: 0.008
+  min_daily_volume_usd: 200000000
+  correlation_lookback_days: 60
+
+performance:
+  historical_sharpe: 1.2
+  historical_win_rate: 0.55
+  historical_max_drawdown: 0.45
+  last_optimization_date: "2025-01-01"
+
+exchange:
+  preferred: "alpaca"
+  symbol_format: "DOGEUSD"
+  min_order_size: 1.0
+  price_increment: 0.00001

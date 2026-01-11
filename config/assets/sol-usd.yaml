@@ -1,0 +1,51 @@
+# SOL-USD Configuration
+# Layer 1 blockchain - high volatility
+
+symbol: "SOL-USD"
+name: "Solana"
+category: "layer1"
+
+enabled: true
+live_trading_allowed: true
+paper_trading_only: false
+
+training:
+  rsi_window: 14
+  lookback_days: 365
+  ml_confidence_threshold: 0.6
+  ml_retrain_frequency_days: 30
+  validation_split: 0.2
+
+trading:
+  rsi_oversold: 30.0
+  rsi_overbought: 70.0
+  fgi_fear_threshold: 30.0
+  fgi_greed_threshold: 70.0
+  take_profit_pct: 0.30
+  short_take_profit_pct: 0.18
+  stop_loss_pct: 0.06
+  trailing_stop_pct: 0.05
+  max_position_size_pct: 0.05
+  max_drawdown_pct: 0.15
+  max_daily_loss_pct: 0.02
+  max_hold_days: 14
+  min_hold_bars: 3
+
+risk:
+  high_volatility_threshold: 0.06
+  low_volatility_threshold: 0.025
+  max_slippage_pct: 0.004
+  min_daily_volume_usd: 500000000
+  correlation_lookback_days: 90
+
+performance:
+  historical_sharpe: 1.9
+  historical_win_rate: 0.62
+  historical_max_drawdown: 0.35
+  last_optimization_date: "2025-01-01"
+
+exchange:
+  preferred: "alpaca"
+  symbol_format: "SOLUSD"
+  min_order_size: 0.01
+  price_increment: 0.01

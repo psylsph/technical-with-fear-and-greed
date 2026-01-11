@@ -1,0 +1,105 @@
+# Global Trading Configuration
+# All settings that apply to the entire trading system
+
+global:
+  # Trading mode: paper, live, backtest
+  mode: "paper"
+  
+  # Starting capital for paper trading
+  initial_capital: 1000.0
+  
+  # Maximum concurrent trades across all assets
+  max_concurrent_trades: 3
+  
+  # Seconds between monitoring iterations
+  check_interval_seconds: 300
+  
+  # Enable/disable features
+  features:
+    enable_short_selling: true
+    enable_regime_filter: true
+    use_atr_trailing_stop: true
+    enable_ml_signals: false
+  
+  # Default asset for single-asset trading
+  default_asset: "ETH-USD"
+
+risk:
+  # Maximum daily loss as percentage of portfolio
+  max_daily_loss_pct: 0.02
+  
+  # Maximum portfolio drawdown as percentage
+  max_portfolio_drawdown_pct: 0.20
+  
+  # Kelly fraction for position sizing (0.5 = half Kelly)
+  kelly_fraction: 0.5
+  
+  # Maximum position size as percentage of portfolio
+  max_position_size_pct: 0.10
+
+strategy:
+  # RSI parameters
+  rsi_window: 14
+  rsi_oversold: 30
+  rsi_overbought: 70
+  
+  # FGI thresholds
+  fgi_fear_threshold: 30
+  fgi_greed_threshold: 70
+  
+  # Quantile-based entry/exit
+  buy_quantile: 0.28
+  sell_quantile: 0.67
+  
+  # Trailing stop percentage
+  trail_pct: 0.0224
+  
+  # Take profit and stop loss
+  take_profit_pct: 0.25
+  stop_loss_pct: 0.05
+  
+  # ML confidence threshold
+  ml_confidence_threshold: 0.41
+  
+  # ATR multiplier for dynamic stops
+  atr_multiplier: 3.14
+
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # Log file path
+  file: "trading.log"
+  
+  # Enable console logging
+  console: true
+
+performance:
+  # Enable performance tracking
+  track_performance: true
+  
+  # Enable daily reports
+  daily_report: true
+  
+  # Enable weekly reports
+  weekly_report: true
+  
+  # Backtest date range
+  start_date: "2023-01-01"
+  end_date: "2025-01-01"
+
+api_keys:
+  # API keys should be set via environment variables
+  # This file should NOT contain actual API keys
+  
+  alpaca:
+    api_key_env: "ALPACA_API_KEY"
+    secret_key_env: "ALPACA_SECRET_KEY"
+  
+  coinbase:
+    api_key_env: "COINBASE_API_KEY"
+    secret_key_env: "COINBASE_SECRET_KEY"
+  
+  telegram:
+    bot_token_env: "TELEGRAM_BOT_TOKEN"
+    chat_id_env: "TELEGRAM_CHAT_ID"
