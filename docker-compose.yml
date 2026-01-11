@@ -4,13 +4,18 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: technical-trading
+    restart: unless-stopped
     volumes:
       - ./src:/app/src
       - ./main.py:/app/main.py
       - ./.env:/app/.env
       - ./cdp_api_key.json:/app/cdp_api_key.json
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - ENV_FILE_LOADED=true
     stdin_open: true
     tty: true
-    command: python main.py --test
+    command: ["python", "main.py", "--live", "-q"]

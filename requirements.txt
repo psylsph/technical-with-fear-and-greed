@@ -74,6 +74,7 @@ wcwidth==0.2.14
 websockets==15.0.1
 widgetsnbextension==4.0.15
 yfinance==1.0
+python-telegram-bot==21.0
 
 # Development dependencies
 black==24.4.2

@@ -14,7 +14,11 @@ from ..data.data_fetchers import get_current_price
 from ..ml.ml_model import pred_series
 from ..portfolio import load_test_state, save_test_state, calculate_portfolio_var
 from ..strategy import generate_signal
+from ..telegram_bot import get_telegram_bot
 from .risk_controls import RiskControls
+
+# Global realized P&L tracker
+realized_pnl = 0.0
 
 
 def calculate_kelly_fraction(
@@ -147,9 +151,14 @@ except ImportError:
 
 
 def execute_trade(
-    symbol: str, side: str, qty: float, trading_client=None, account_info: Optional[Dict] = None
+    symbol: str,
+    side: str,
+    qty: float,
+    trading_client=None,
+    account_info: Optional[Dict] = None,
+    indicators: Optional[Dict] = None,
 ) -> Optional[object]:
-    """Execute trade via Alpaca with proper checks."""
+    """Execute trade via Alpaca with proper checks and Telegram notifications."""
     if not ALPACA_AVAILABLE or trading_client is None:
         print(
             f"Trade execution disabled (Alpaca not configured): {side} {qty} {symbol}"
@@ -200,11 +209,29 @@ def execute_trade(
     try:
         order = trading_client.submit_order(order_data)
         print(f"Order submitted: {order.id} - {side.upper()} {qty} {alpaca_symbol}")
+
+        # Send Telegram notification
+        current_price = get_current_price("ETH-USD")
+        if current_price:
+            telegram_bot = get_telegram_bot()
+            telegram_bot.send_trade_notification(
+                symbol=symbol,
+                action=side,
+                quantity=qty,
+                price=current_price,
+                reason="Signal-based trade",
+                indicators=indicators,
+            )
+
         return order
     except Exception as e:
         print(f"Order failed: {e}")
         import traceback
         traceback.print_exc()
+
+        # Send error notification via Telegram
+        get_telegram_bot().send_error_notification(str(e), context=f"Execute {side} {qty} {symbol}")
+
         return None
 
 
@@ -301,11 +328,22 @@ def get_position(qsymbol: str, trading_client) -> dict:
 def get_account_info(trading_client) -> Optional[Dict]:
     """Get account information."""
     try:
+        from ..config import INITIAL_CAPITAL
         account = trading_client.get_account()
+        # Calculate total P&L as current equity minus initial capital
+        total_pnl = float(account.equity) - INITIAL_CAPITAL
+        total_pnl_pct = (total_pnl / INITIAL_CAPITAL) * 100 if INITIAL_CAPITAL > 0 else 0.0
+
         return {
             "cash": float(account.cash),
             "equity": float(account.equity),
             "buying_power": float(account.buying_power),
+            "portfolio_value": float(account.portfolio_value),
+            "last_equity": float(account.last_equity),
+            "day_pnl": float(account.equity) - float(account.last_equity),
+            "pnl": total_pnl,
+            "pnl_pct": total_pnl_pct,
+            "realized_pnl": realized_pnl,  # Keep realized P&L from trades
         }
     except Exception as e:
         print(f"Error getting account: {e}")
@@ -917,7 +955,7 @@ def run_test_trading(fgi_df: pd.DataFrame):
 
 
 def run_live_trading(fgi_df: pd.DataFrame):
-    """Run live trading mode."""
+    """Run live trading mode with Telegram notifications."""
     print("\n" + "=" * 60)
     print("LIVE TRADING MODE")
     print("=" * 60)
@@ -926,6 +964,24 @@ def run_live_trading(fgi_df: pd.DataFrame):
 
     api_key = os.getenv("ALPACA_API_KEY")
     secret_key = os.getenv("ALPACA_SECRET_KEY")
+
+    # Initialize Telegram bot
+    telegram_bot = get_telegram_bot()
+    if telegram_bot.is_enabled():
+        # Set up status callback before starting bot
+        # Define status callback for Telegram (will be updated with live data)
+        def get_status():
+            """Return current trading status for Telegram queries."""
+            return {
+                "account": {"equity": 10000.0, "cash": 10000.0, "pnl": 0.0},  # Default values
+                "positions": [],
+                "recent_trades": [],
+            }
+        telegram_bot.set_status_callback(get_status)
+        telegram_bot.start()  # Now starts asynchronously
+        print("Telegram bot startup initiated - notifications will be enabled when connected")
+    else:
+        print("Telegram bot not configured - notifications disabled")
 
     if not ALPACA_AVAILABLE:
         print("\nLive Trading: alpaca-py not installed")
@@ -937,6 +993,34 @@ def run_live_trading(fgi_df: pd.DataFrame):
         SYMBOL = "ETH/USD"
         CHECK_INTERVAL = 300  # 5 minutes between checks
         TRADING_CLIENT = TradingClient(api_key, secret_key, paper=True)
+
+        # Store state for status callback
+        _live_trading_state = {
+            "symbol": SYMBOL,
+            "account": {},
+            "positions": [],
+            "trades": [],
+            "signal_info": None,
+        }
+
+        # Define status callback for Telegram
+        def get_status():
+            """Return current trading status for Telegram queries."""
+            return {
+                "account": _live_trading_state.get("account", {}),
+                "positions": _live_trading_state.get("positions", []),
+                "recent_trades": _live_trading_state.get("trades", [])[-10:],
+            }
+
+        # Update status callback with live data
+        def get_status():
+            """Return current trading status for Telegram queries."""
+            return {
+                "account": _live_trading_state.get("account", {}),
+                "positions": _live_trading_state.get("positions", []),
+                "recent_trades": _live_trading_state.get("trades", [])[-10:],
+            }
+        telegram_bot.set_status_callback(get_status)
 
         print("\nUsing optimized strategy parameters:")
         print(f"  RSI Window: {BEST_PARAMS['rsi_window']}")
@@ -963,6 +1047,35 @@ def run_live_trading(fgi_df: pd.DataFrame):
         print("  • Volume Filter: 1.2x average")
         print("-" * 60)
 
+        # Send startup status notification to Telegram
+        if telegram_bot.is_enabled():
+            try:
+                # Get initial account and position info
+                account_info = get_account_info(TRADING_CLIENT)
+                position_info = get_position(SYMBOL, TRADING_CLIENT)
+
+                status_msg = f"🚀 *Trading Bot Started*\n\n"
+                status_msg += f"*Mode:* Paper Trading\n"
+                status_msg += f"*Symbol:* {SYMBOL}\n"
+
+                if account_info:
+                    status_msg += f"\n*Account:*\n"
+                    status_msg += f"  Equity: ${account_info.get('equity', 0):,.2f}\n"
+                    status_msg += f"  Cash: ${account_info.get('cash', 0):,.2f}\n"
+
+                if position_info.get("qty", 0) != 0:
+                    status_msg += f"\n*Current Position:*\n"
+                    status_msg += f"  {position_info.get('qty', 0):.6f} @ ${position_info.get('avg_entry', 0):,.2f}\n"
+                    status_msg += f"  P&L: {position_info.get('unrealized_pnl_pct', 0):+.2f}%\n"
+                else:
+                    status_msg += f"\n*Position:* None\n"
+
+                status_msg += f"\nUse /status to check anytime"
+
+                telegram_bot.send_notification(status_msg)
+            except Exception as e:
+                print(f"Failed to send startup notification: {e}")
+
         trade_log = []
         try:
             while True:
@@ -975,9 +1088,23 @@ def run_live_trading(fgi_df: pd.DataFrame):
                         print(
                             f"  Account: ${account_info['equity']:.2f} equity, ${account_info['cash']:.2f} cash"
                         )
+                        # Update state for Telegram queries
+                        _live_trading_state["account"] = account_info
 
                     position_info = get_position(SYMBOL, TRADING_CLIENT)
                     # Position details already printed in get_position()
+                    # Update state for Telegram queries
+                    if position_info.get("qty", 0) != 0:
+                        _live_trading_state["positions"] = [{
+                            "symbol": SYMBOL,
+                            "qty": position_info.get("qty", 0),
+                            "avg_entry": position_info.get("entry_price", 0),
+                            "current_price": position_info.get("current_price", 0),
+                            "unrealized_pnl": position_info.get("unrealized_pl", 0),
+                            "unrealized_pnl_pct": position_info.get("unrealized_plpc", 0),
+                        }]
+                    else:
+                        _live_trading_state["positions"] = []
 
                     # Check all risk controls (daily limit, trailing stop, time exit)
                     current_price = position_info.get("current_price", 0)
@@ -993,9 +1120,13 @@ def run_live_trading(fgi_df: pd.DataFrame):
                             action = "sell"
                             qty = abs(position_qty)
                             print(f"  >>> RISK EXIT: {action.upper()} {qty:.6f} {SYMBOL} <<<")
-                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info)
+                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info, indicators={"reason": risk_reason})
                             if order:
                                 risk_controls.record_position_exit(SYMBOL)
+                                # Calculate realized P&L for closing trade
+                                if action == "sell":
+                                    pnl = (current_price - position_info.get("avg_entry", 0)) * qty
+                                    realized_pnl += pnl
                                 trade_log.append({
                                     "time": now,
                                     "action": action,
@@ -1003,6 +1134,7 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                     "price": current_price,
                                     "reason": risk_reason,
                                 })
+                                _live_trading_state["trades"] = list(trade_log)
 
                         # If daily limit hit, stop all trading for the day
                         if "Daily loss limit" in risk_reason:
@@ -1041,10 +1173,14 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                 action = "sell"
                                 qty = abs(position_qty)
                                 print(f"  >>> EMERGENCY EXIT: {action.upper()} {qty:.6f} {SYMBOL} <<<")
-                                order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info)
+                                order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info, indicators=ind)
                                 order_id = order.id if order else None
                                 if order:
                                     log_trade(signal_info, action, qty, order_id)
+                                    # Calculate realized P&L for closing trade
+                                    if action == "sell":
+                                        pnl = (ind.get("price", 0) - position_info.get("avg_entry", 0)) * qty
+                                        realized_pnl += pnl
                                     trade_log.append(
                                         {
                                             "time": now,
@@ -1054,6 +1190,7 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                             "reason": exit_reason,
                                         }
                                     )
+                                    _live_trading_state["trades"] = list(trade_log)
                                 # Skip normal trading logic after stop loss
                                 import time
                                 print(f"\nSleeping {CHECK_INTERVAL} seconds...")
@@ -1073,7 +1210,7 @@ def run_live_trading(fgi_df: pd.DataFrame):
                             print(
                                 f"\n  >>> Executing {action.upper()} {qty:.6f} {SYMBOL} <<<"
                             )
-                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info)
+                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info, indicators=ind)
                             order_id = order.id if order else None
                             if order:  # Only log successful trades
                                 log_trade(signal_info, action, qty, order_id)
@@ -1082,6 +1219,9 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                     risk_controls.record_position_entry(SYMBOL, current_price)
                                 elif action == "sell":
                                     risk_controls.record_position_exit(SYMBOL)
+                                    # Calculate realized P&L for closing trade
+                                    pnl = (ind.get("price", 0) - position_info.get("avg_entry", 0)) * qty
+                                    realized_pnl += pnl
                             trade_log.append(
                                 {
                                     "time": now,
@@ -1090,6 +1230,8 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                     "price": ind.get("price", 0),
                                 }
                             )
+                            # Update state for Telegram queries
+                            _live_trading_state["trades"] = list(trade_log)
                         else:
                             if position_qty > 0:
                                 print("  No trade: Holding long position")
