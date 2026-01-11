@@ -5,7 +5,7 @@ Live and test trading engine.
 import json
 import os
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -363,10 +363,22 @@ def check_stop_loss(position_info: dict, signal_info: dict, max_drawdown: float 
     return False, "Hold"
 
 
-def analyze_live_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
-    """Analyze current market using the optimized strategy from backtesting."""
+def analyze_live_signal(
+    fgi_df: pd.DataFrame, symbol: str = "ETH-USD", trading_client=None
+) -> Optional[Dict]:
+    """
+    Analyze current market using the optimized strategy from backtesting.
+
+    Args:
+        fgi_df: Fear & Greed Index data
+        symbol: Trading symbol (default: ETH-USD)
+        trading_client: Optional trading client for live pricing
+
+    Returns:
+        Signal dict or None if error
+    """
     try:
-        current_close = get_current_price("ETH-USD")
+        current_close = get_current_price(symbol)
 
         if current_close is None:
             return None
@@ -438,7 +450,7 @@ def analyze_test_signal(fgi_df: pd.DataFrame) -> Optional[Dict]:
 
 def should_trade(
     signal_info: dict,
-    position_info: dict,
+    position_info: Union[dict, float],
     is_live: bool = False,
     account_info: Optional[Dict] = None,
 ) -> Tuple[str, float]:
@@ -447,12 +459,19 @@ def should_trade(
     Args:
         signal_info: Dict from analyze_live_signal() with signal and indicators
         position_info: Dict from get_position() with qty, entry_price, etc.
+                      (or float for backward compatibility - current position amount)
         is_live: Whether in live mode
         account_info: Account info dict from get_account_info()
     """
+    # Handle backward compatibility: if position_info is a float, convert to dict
+    if isinstance(position_info, (int, float)):
+        current_position = float(position_info)
+        position_info = {"qty": current_position}
+    else:
+        current_position = position_info.get("qty", 0.0)
+
     signal = signal_info.get("signal", "hold")
     price = signal_info.get("indicators", {}).get("price", 0)
-    current_position = position_info.get("qty", 0.0)
 
     # Long position entry
     if signal == "buy" and current_position == 0:

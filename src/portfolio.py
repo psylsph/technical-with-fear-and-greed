@@ -111,7 +111,17 @@ def load_test_state() -> dict:
     if os.path.exists(TEST_STATE_FILE):
         try:
             with open(TEST_STATE_FILE) as f:
-                return json.load(f)
+                state = json.load(f)
+                # Handle backward compatibility: convert old state files
+                if "eth_held" not in state and "btc_held" in state:
+                    state["eth_held"] = state["btc_held"]
+                if "entry_price" not in state:
+                    state["entry_price"] = 0.0
+                if "initialized" not in state:
+                    state["initialized"] = True
+                if "trades" not in state:
+                    state["trades"] = []
+                return state
         except Exception as e:
             print(f"Error loading test state: {e}")
     return {
@@ -142,6 +152,17 @@ def simulate_trade(
 ) -> dict:
     """Simulate a trade and update state. Returns updated state."""
     maker_fee, taker_fee = fees
+
+    # Handle backward compatibility: old state files used "btc_held", new ones use "eth_held"
+    # Also handle missing "entry_price" for very old state files
+    if "eth_held" not in state:
+        state["eth_held"] = state.pop("btc_held", 0.0)  # Convert old key to new
+    if "entry_price" not in state:
+        state["entry_price"] = 0.0
+    if "initialized" not in state:
+        state["initialized"] = True
+    if "trades" not in state:
+        state["trades"] = []
 
     if side.lower() == "buy":
         cost = price * qty * (1 + taker_fee)
@@ -199,4 +220,7 @@ def simulate_trade(
 
 def get_test_portfolio_value(state: dict, current_price: float) -> float:
     """Calculate total portfolio value in test mode."""
+    # Handle backward compatibility for old state files
+    if "eth_held" not in state:
+        state["eth_held"] = state.pop("btc_held", 0.0)
     return state["cash"] + state["eth_held"] * current_price
