@@ -129,9 +129,7 @@ def calculate_fibonacci_retracements(
     }
 
     # Determine which level price is closest to
-    closest_level = min(
-        fib_levels.items(), key=lambda x: abs(x[1] - current_price)
-    )
+    closest_level = min(fib_levels.items(), key=lambda x: abs(x[1] - current_price))
 
     # Calculate retracement percentage
     if diff > 0:
@@ -147,9 +145,7 @@ def calculate_fibonacci_retracements(
     }
 
 
-def calculate_pivot_points(
-    high: pd.Series, low: pd.Series, close: pd.Series
-) -> dict:
+def calculate_pivot_points(high: pd.Series, low: pd.Series, close: pd.Series) -> dict:
     """Calculate pivot points (classic support/resistance).
 
     Args:

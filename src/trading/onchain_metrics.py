@@ -18,6 +18,7 @@ from ..config import PROJECT_ROOT
 
 class MetricType(Enum):
     """Types of on-chain metrics."""
+
     EXCHANGE_FLOW = "exchange_flow"
     WHALE_TRANSACTION = "whale_transaction"
     ACTIVE_ADDRESSES = "active_addresses"
@@ -31,12 +32,14 @@ class MetricType(Enum):
 
 class FlowDirection(Enum):
     """Direction of exchange flow."""
+
     INFLOW = "inflow"  # Into exchange (bearish signal)
     OUTFLOW = "outflow"  # Out of exchange (bullish signal)
 
 
 class WhaleCategory(Enum):
     """Categories of whale transactions."""
+
     EXCHANGE_TO_WALLET = "exchange_to_wallet"  # Accumulation (bullish)
     WALLET_TO_EXCHANGE = "wallet_to_exchange"  # Distribution (bearish)
     WALLET_TO_WALLET = "wallet_to_wallet"  # Redistribution
@@ -46,6 +49,7 @@ class WhaleCategory(Enum):
 @dataclass
 class ExchangeFlow:
     """Exchange flow data point."""
+
     timestamp: str
     exchange: str
     symbol: str
@@ -58,6 +62,7 @@ class ExchangeFlow:
 @dataclass
 class WhaleTransaction:
     """Large whale transaction."""
+
     timestamp: str
     symbol: str
     category: WhaleCategory
@@ -71,6 +76,7 @@ class WhaleTransaction:
 @dataclass
 class OnChainMetric:
     """Generic on-chain metric data point."""
+
     timestamp: str
     symbol: str
     metric_type: MetricType
@@ -103,9 +109,7 @@ class OnChainDataFetcher:
             cache_dir: Directory for caching data
         """
         self.api_key = api_key or os.environ.get("ONCHAIN_API_KEY")
-        self.cache_dir = cache_dir or os.path.join(
-            PROJECT_ROOT, "cache", "onchain"
-        )
+        self.cache_dir = cache_dir or os.path.join(PROJECT_ROOT, "cache", "onchain")
         os.makedirs(self.cache_dir, exist_ok=True)
 
         # Base URLs for different providers (would need real endpoints)
@@ -177,30 +181,38 @@ class OnChainDataFetcher:
             timestamp = (now - timedelta(hours=i)).isoformat()
 
             # Simulate some flow activity
-            inflow_usd = np.random.uniform(1000000, 50000000) if np.random.random() > 0.7 else 0
-            outflow_usd = np.random.uniform(1000000, 50000000) if np.random.random() > 0.7 else 0
+            inflow_usd = (
+                np.random.uniform(1000000, 50000000) if np.random.random() > 0.7 else 0
+            )
+            outflow_usd = (
+                np.random.uniform(1000000, 50000000) if np.random.random() > 0.7 else 0
+            )
 
             if inflow_usd > 0:
-                flows.append(ExchangeFlow(
-                    timestamp=timestamp,
-                    exchange=exchange,
-                    symbol=symbol,
-                    direction=FlowDirection.INFLOW,
-                    amount_usd=inflow_usd,
-                    amount_tokens=inflow_usd / 2000,  # Approximate price
-                    tx_count=np.random.randint(10, 100),
-                ))
+                flows.append(
+                    ExchangeFlow(
+                        timestamp=timestamp,
+                        exchange=exchange,
+                        symbol=symbol,
+                        direction=FlowDirection.INFLOW,
+                        amount_usd=inflow_usd,
+                        amount_tokens=inflow_usd / 2000,  # Approximate price
+                        tx_count=np.random.randint(10, 100),
+                    )
+                )
 
             if outflow_usd > 0:
-                flows.append(ExchangeFlow(
-                    timestamp=timestamp,
-                    exchange=exchange,
-                    symbol=symbol,
-                    direction=FlowDirection.OUTFLOW,
-                    amount_usd=outflow_usd,
-                    amount_tokens=outflow_usd / 2000,
-                    tx_count=np.random.randint(10, 100),
-                ))
+                flows.append(
+                    ExchangeFlow(
+                        timestamp=timestamp,
+                        exchange=exchange,
+                        symbol=symbol,
+                        direction=FlowDirection.OUTFLOW,
+                        amount_usd=outflow_usd,
+                        amount_tokens=outflow_usd / 2000,
+                        tx_count=np.random.randint(10, 100),
+                    )
+                )
 
         return flows
 
@@ -233,16 +245,18 @@ class OnChainDataFetcher:
             categories = list(WhaleCategory)
             category = categories[np.random.randint(0, len(categories))]
 
-            transactions.append(WhaleTransaction(
-                timestamp=timestamp,
-                symbol=symbol,
-                category=category,
-                amount_usd=amount_usd,
-                amount_tokens=amount_usd / 2000,
-                from_address=f"0x{''.join(np.random.choice(list('0123456789abcdef'), 40))}",
-                to_address=f"0x{''.join(np.random.choice(list('0123456789abcdef'), 40))}",
-                tx_hash=f"0x{''.join(np.random.choice(list('0123456789abcdef'), 64))}",
-            ))
+            transactions.append(
+                WhaleTransaction(
+                    timestamp=timestamp,
+                    symbol=symbol,
+                    category=category,
+                    amount_usd=amount_usd,
+                    amount_tokens=amount_usd / 2000,
+                    from_address=f"0x{''.join(np.random.choice(list('0123456789abcdef'), 40))}",
+                    to_address=f"0x{''.join(np.random.choice(list('0123456789abcdef'), 40))}",
+                    tx_hash=f"0x{''.join(np.random.choice(list('0123456789abcdef'), 64))}",
+                )
+            )
 
         return sorted(transactions, key=lambda x: x.timestamp, reverse=True)
 
@@ -270,10 +284,12 @@ class OnChainDataFetcher:
 
         addresses = base_count * (1 + trend + noise)
 
-        return pd.DataFrame({
-            "timestamp": dates,
-            "active_addresses": addresses.astype(int),
-        })
+        return pd.DataFrame(
+            {
+                "timestamp": dates,
+                "active_addresses": addresses.astype(int),
+            }
+        )
 
     def get_mvrv_ratio(
         self,
@@ -297,10 +313,12 @@ class OnChainDataFetcher:
         base_mvrv = 1.5
         mvrv_values = base_mvrv + np.random.normal(0, 0.3, days)
 
-        return pd.DataFrame({
-            "timestamp": dates,
-            "mvrv_ratio": mvrv_values,
-        })
+        return pd.DataFrame(
+            {
+                "timestamp": dates,
+                "mvrv_ratio": mvrv_values,
+            }
+        )
 
     def get_exchange_reserves(
         self,
@@ -326,10 +344,12 @@ class OnChainDataFetcher:
 
         reserves = base_reserve * (1 + trend + noise)
 
-        return pd.DataFrame({
-            "timestamp": dates,
-            "exchange_reserve": reserves.astype(int),
-        })
+        return pd.DataFrame(
+            {
+                "timestamp": dates,
+                "exchange_reserve": reserves.astype(int),
+            }
+        )
 
 
 class OnChainAnalyzer:
@@ -374,11 +394,19 @@ class OnChainAnalyzer:
             return {"signal": "neutral", "reason": "No flow data available"}
 
         # Calculate net flow
-        inflow_total = sum(f.amount_usd for f in flows if f.direction == FlowDirection.INFLOW)
-        outflow_total = sum(f.amount_usd for f in flows if f.direction == FlowDirection.OUTFLOW)
+        inflow_total = sum(
+            f.amount_usd for f in flows if f.direction == FlowDirection.INFLOW
+        )
+        outflow_total = sum(
+            f.amount_usd for f in flows if f.direction == FlowDirection.OUTFLOW
+        )
 
         net_flow = outflow_total - inflow_total
-        net_flow_pct = (net_flow / (inflow_total + outflow_total) * 100) if (inflow_total + outflow_total) > 0 else 0
+        net_flow_pct = (
+            (net_flow / (inflow_total + outflow_total) * 100)
+            if (inflow_total + outflow_total) > 0
+            else 0
+        )
 
         # Generate signal
         # Outflow > Inflow = bullish (people moving coins off exchange)
@@ -435,8 +463,12 @@ class OnChainAnalyzer:
             return {"signal": "neutral", "reason": "No whale activity"}
 
         # Categorize transactions
-        exchange_to_wallet = [t for t in transactions if t.category == WhaleCategory.EXCHANGE_TO_WALLET]
-        wallet_to_exchange = [t for t in transactions if t.category == WhaleCategory.WALLET_TO_EXCHANGE]
+        exchange_to_wallet = [
+            t for t in transactions if t.category == WhaleCategory.EXCHANGE_TO_WALLET
+        ]
+        wallet_to_exchange = [
+            t for t in transactions if t.category == WhaleCategory.WALLET_TO_EXCHANGE
+        ]
 
         # Calculate totals
         accumulation_usd = sum(t.amount_usd for t in exchange_to_wallet)
@@ -497,7 +529,9 @@ class OnChainAnalyzer:
             return {"signal": "neutral", "reason": "No MVRV data"}
 
         current_mvrv = mvrv_data["mvrv_ratio"].iloc[-1]
-        percentile = (mvrv_data["mvrv_ratio"] < current_mvrv).sum() / len(mvrv_data) * 100
+        percentile = (
+            (mvrv_data["mvrv_ratio"] < current_mvrv).sum() / len(mvrv_data) * 100
+        )
 
         # MVRV interpretation
         # < 1: Undervalued (bullish)
@@ -627,10 +661,18 @@ class OnChainAnalyzer:
             "weak": 1,
         }
 
-        flow_score = signal_scores[flow_signal["signal"]] * strength_multipliers.get(flow_signal.get("strength", "weak"), 1)
-        whale_score = signal_scores[whale_signal["signal"]] * strength_multipliers.get(whale_signal.get("strength", "weak"), 1)
-        mvrv_score = signal_scores[mvrv_signal["signal"]] * strength_multipliers.get(mvrv_signal.get("strength", "weak"), 1)
-        reserve_score = signal_scores[reserve_signal["signal"]] * strength_multipliers.get(reserve_signal.get("strength", "weak"), 1)
+        flow_score = signal_scores[flow_signal["signal"]] * strength_multipliers.get(
+            flow_signal.get("strength", "weak"), 1
+        )
+        whale_score = signal_scores[whale_signal["signal"]] * strength_multipliers.get(
+            whale_signal.get("strength", "weak"), 1
+        )
+        mvrv_score = signal_scores[mvrv_signal["signal"]] * strength_multipliers.get(
+            mvrv_signal.get("strength", "weak"), 1
+        )
+        reserve_score = signal_scores[
+            reserve_signal["signal"]
+        ] * strength_multipliers.get(reserve_signal.get("strength", "weak"), 1)
 
         # Calculate composite score
         composite_score = (flow_score + whale_score + mvrv_score + reserve_score) / 4
@@ -719,7 +761,9 @@ def generate_onchain_report(symbol: str = "ETH") -> str:
     report += "Exchange Flows:\n"
     flow = signals["exchange_flows"]
     report += f"  Signal: {flow['signal']}\n"
-    report += f"  Net Flow: ${flow['net_flow_usd']:,.0f} ({flow['net_flow_pct']:+.1f}%)\n"
+    report += (
+        f"  Net Flow: ${flow['net_flow_usd']:,.0f} ({flow['net_flow_pct']:+.1f}%)\n"
+    )
     report += f"  Inflow: ${flow['inflow_usd']:,.0f}\n"
     report += f"  Outflow: ${flow['outflow_usd']:,.0f}\n\n"
 

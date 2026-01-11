@@ -834,27 +834,47 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame, use_ml_predictions: bool = F
 
                 if len(hist_ml_df) > 0 and rf_model is not None:
                     feature_columns = [
-                        "close", "returns_3d", "returns_7d", "returns_30d",
-                        "volatility_7d", "volatility_30d", "atr_14d", "rsi",
-                        "fgi", "fgi_lag1", "fgi_ma_7d", "volume", "volume_ratio",
-                        "price_fgi_corr"
+                        "close",
+                        "returns_3d",
+                        "returns_7d",
+                        "returns_30d",
+                        "volatility_7d",
+                        "volatility_30d",
+                        "atr_14d",
+                        "rsi",
+                        "fgi",
+                        "fgi_lag1",
+                        "fgi_ma_7d",
+                        "volume",
+                        "volume_ratio",
+                        "price_fgi_corr",
                     ]
                     # Filter to test period
-                    test_ml_df = hist_ml_df.loc[test_ohlcv.index.intersection(hist_ml_df.index)]
+                    test_ml_df = hist_ml_df.loc[
+                        test_ohlcv.index.intersection(hist_ml_df.index)
+                    ]
 
                     if len(test_ml_df) > 0:
                         ml_predictions = pd.Series(
                             rf_model.predict_proba(test_ml_df[feature_columns])[:, 1],
-                            index=test_ml_df.index
+                            index=test_ml_df.index,
                         )
                         # Debug: Show prediction stats
-                        print(f"  ML Predictions - Min: {ml_predictions.min():.3f}, Max: {ml_predictions.max():.3f}, Mean: {ml_predictions.mean():.3f}")
-                        print(f"  Predictions > 0.60: {(ml_predictions > 0.60).sum()} / {len(ml_predictions)}")
+                        print(
+                            f"  ML Predictions - Min: {ml_predictions.min():.3f}, Max: {ml_predictions.max():.3f}, Mean: {ml_predictions.mean():.3f}"
+                        )
+                        print(
+                            f"  Predictions > 0.60: {(ml_predictions > 0.60).sum()} / {len(ml_predictions)}"
+                        )
                     else:
-                        print(f"  Warning: No overlapping test data, using neutral predictions")
+                        print(
+                            "  Warning: No overlapping test data, using neutral predictions"
+                        )
                         ml_predictions = pd.Series(0.5, index=test_ohlcv.index)
                 else:
-                    print(f"  Warning: No ML data or model ({len(hist_ml_df)} samples, model: {rf_model is not None})")
+                    print(
+                        f"  Warning: No ML data or model ({len(hist_ml_df)} samples, model: {rf_model is not None})"
+                    )
                     ml_predictions = pd.Series(0.5, index=test_ohlcv.index)
         except Exception as e:
             print(f"  ML training failed: {e}, using no-ML approach")
@@ -874,7 +894,7 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame, use_ml_predictions: bool = F
                     max_drawdown_exit=0.05,
                 )
                 results.append(result)
-                print(f"  ML-Based Strategy:")
+                print("  ML-Based Strategy:")
                 print(
                     f"  Return: {result['total_return']:.2f}%, Trades: {result['total_trades']}, Win Rate: {result['win_rate']:.1f}%"
                 )
@@ -909,7 +929,9 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame, use_ml_predictions: bool = F
                         (result, (fear_thresh, greed_thresh, adx_thresh, vol_mult))
                     )
                 except Exception as e:
-                    print(f"  Strategy failed for params {fear_thresh}/{greed_thresh}: {e}")
+                    print(
+                        f"  Strategy failed for params {fear_thresh}/{greed_thresh}: {e}"
+                    )
                     continue
 
             # Best result for this window
@@ -1067,7 +1089,7 @@ def run_ml_based_strategy(
             "sharpe_ratio": stats["Sharpe Ratio"],
             "granularity": granularity_name,
         }
-    except Exception as e:
+    except Exception:
         # Fallback if vectorbt fails
         total_trades = entries.sum().sum()
         return {
@@ -1402,6 +1424,7 @@ def show_ml_status():
     except Exception as e:
         print(f"\nError getting ML status: {e}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -1486,6 +1509,7 @@ def train_advanced_ml_models():
     except Exception as e:
         print(f"\nError training models: {e}")
         import traceback
+
         traceback.print_exc()
 
 

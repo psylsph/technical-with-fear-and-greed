@@ -13,6 +13,7 @@ import numpy as np
 
 class TestResult(Enum):
     """Result categories for out-of-sample testing."""
+
     PASS = "pass"
     FAIL = "fail"
     INCONCLUSIVE = "inconclusive"
@@ -21,6 +22,7 @@ class TestResult(Enum):
 @dataclass
 class PerformanceMetrics:
     """Performance metrics for a strategy."""
+
     total_return: float
     sharpe_ratio: float
     sortino_ratio: float
@@ -47,9 +49,9 @@ class OutOfSampleTester:
     def __init__(
         self,
         min_train_periods: int = 252,  # ~1 year of daily data
-        min_test_periods: int = 63,     # ~3 months of daily data
+        min_test_periods: int = 63,  # ~3 months of daily data
         performance_decay_threshold: float = 0.5,  # Test perf should be >= 50% of train
-        sharpe_threshold: float = 0.5,   # Minimum Sharpe ratio
+        sharpe_threshold: float = 0.5,  # Minimum Sharpe ratio
     ):
         """
         Args:
@@ -64,10 +66,7 @@ class OutOfSampleTester:
         self.sharpe_threshold = sharpe_threshold
 
     def split_data(
-        self,
-        data: pd.DataFrame,
-        train_end_date: str,
-        date_column: str = "timestamp"
+        self, data: pd.DataFrame, train_end_date: str, date_column: str = "timestamp"
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Split data into train and test sets by date.
@@ -93,7 +92,7 @@ class OutOfSampleTester:
         self,
         data: pd.DataFrame,
         train_ratio: float = 0.7,
-        date_column: str = "timestamp"
+        date_column: str = "timestamp",
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Split data into train and test sets by ratio (chronological).
@@ -114,10 +113,7 @@ class OutOfSampleTester:
 
         return train_data, test_data
 
-    def calculate_metrics(
-        self,
-        returns: pd.Series
-    ) -> PerformanceMetrics:
+    def calculate_metrics(self, returns: pd.Series) -> PerformanceMetrics:
         """
         Calculate comprehensive performance metrics.
 
@@ -257,7 +253,9 @@ class OutOfSampleTester:
                 TestResult.INCONCLUSIVE,
                 PerformanceMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
                 PerformanceMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                {"error": f"Insufficient training data: {len(train_data)} < {self.min_train_periods}"}
+                {
+                    "error": f"Insufficient training data: {len(train_data)} < {self.min_train_periods}"
+                },
             )
 
         if len(test_data) < self.min_test_periods:
@@ -265,7 +263,9 @@ class OutOfSampleTester:
                 TestResult.INCONCLUSIVE,
                 PerformanceMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
                 PerformanceMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                {"error": f"Insufficient test data: {len(test_data)} < {self.min_test_periods}"}
+                {
+                    "error": f"Insufficient test data: {len(test_data)} < {self.min_test_periods}"
+                },
             )
 
         # Simulate strategy on both periods
@@ -285,11 +285,10 @@ class OutOfSampleTester:
         return result, train_metrics, test_metrics, comparison
 
     def _compare_performance(
-        self,
-        train_metrics: PerformanceMetrics,
-        test_metrics: PerformanceMetrics
+        self, train_metrics: PerformanceMetrics, test_metrics: PerformanceMetrics
     ) -> Dict:
         """Compare train vs test performance."""
+
         # Calculate performance ratios (test / train)
         def safe_ratio(test_val: float, train_val: float) -> float:
             if train_val == 0:
@@ -297,9 +296,15 @@ class OutOfSampleTester:
             return test_val / train_val
 
         return {
-            "return_ratio": safe_ratio(test_metrics.total_return, train_metrics.total_return),
-            "sharpe_ratio": safe_ratio(test_metrics.sharpe_ratio, train_metrics.sharpe_ratio),
-            "drawdown_ratio": safe_ratio(test_metrics.max_drawdown, train_metrics.max_drawdown),
+            "return_ratio": safe_ratio(
+                test_metrics.total_return, train_metrics.total_return
+            ),
+            "sharpe_ratio": safe_ratio(
+                test_metrics.sharpe_ratio, train_metrics.sharpe_ratio
+            ),
+            "drawdown_ratio": safe_ratio(
+                test_metrics.max_drawdown, train_metrics.max_drawdown
+            ),
             "win_rate_ratio": safe_ratio(test_metrics.win_rate, train_metrics.win_rate),
             "return_difference": test_metrics.total_return - train_metrics.total_return,
             "sharpe_difference": test_metrics.sharpe_ratio - train_metrics.sharpe_ratio,
@@ -309,7 +314,7 @@ class OutOfSampleTester:
         self,
         train_metrics: PerformanceMetrics,
         test_metrics: PerformanceMetrics,
-        comparison: Dict
+        comparison: Dict,
     ) -> TestResult:
         """Determine overall test result."""
         # Check minimum Sharpe threshold
@@ -331,7 +336,7 @@ class OutOfSampleTester:
         result: TestResult,
         train_metrics: PerformanceMetrics,
         test_metrics: PerformanceMetrics,
-        comparison: Dict
+        comparison: Dict,
     ) -> str:
         """Generate human-readable out-of-sample test report."""
         emoji = {
@@ -393,7 +398,7 @@ class OutOfSampleTester:
 def run_oos_test(
     data: pd.DataFrame,
     signal_generator: Callable[[pd.DataFrame], pd.Series],
-    train_ratio: float = 0.7
+    train_ratio: float = 0.7,
 ) -> Tuple[TestResult, str]:
     """
     Convenience function to run out-of-sample test.
@@ -409,9 +414,7 @@ def run_oos_test(
     tester = OutOfSampleTester()
 
     result, train_metrics, test_metrics, comparison = tester.run_out_of_sample_test(
-        data,
-        signal_generator,
-        train_ratio=train_ratio
+        data, signal_generator, train_ratio=train_ratio
     )
     report = tester.get_test_report(result, train_metrics, test_metrics, comparison)
 

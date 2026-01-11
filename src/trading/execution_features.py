@@ -15,9 +15,7 @@ class EntryConfirmation:
     """Wait for confirmation after signal before entering trade."""
 
     def __init__(
-        self,
-        confirmation_bars: int = 2,
-        confirmation_threshold: float = 0.01
+        self, confirmation_bars: int = 2, confirmation_threshold: float = 0.01
     ):
         """
         Args:
@@ -45,12 +43,7 @@ class EntryConfirmation:
         with open(self.pending_signals_file, "w") as f:
             json.dump(self.pending_signals, f, indent=2)
 
-    def record_signal(
-        self,
-        signal: str,
-        price: float,
-        timestamp: str = None
-    ):
+    def record_signal(self, signal: str, price: float, timestamp: str = None):
         """
         Record a new trading signal.
 
@@ -75,10 +68,7 @@ class EntryConfirmation:
         self._save_state()
 
     def check_confirmation(
-        self,
-        signal: str,
-        entry_price: float,
-        current_price: float
+        self, signal: str, entry_price: float, current_price: float
     ) -> Tuple[bool, str]:
         """
         Check if signal should be confirmed for entry.
@@ -102,7 +92,10 @@ class EntryConfirmation:
                     # Signal expired
                     del self.pending_signals[key]
                     self._save_state()
-                    return False, f"Signal expired after {self.confirmation_bars} bars without confirmation"
+                    return (
+                        False,
+                        f"Signal expired after {self.confirmation_bars} bars without confirmation",
+                    )
 
                 # Check confirmation based on signal type
                 if signal == "buy":
@@ -113,17 +106,26 @@ class EntryConfirmation:
                         pending["bars_waited"] = bars_waited
                         pending["confirmed"] = True
                         self._save_state()
-                        return True, f"Buy confirmed after {bars_waited} bars (price +{price_change:.2%})"
+                        return (
+                            True,
+                            f"Buy confirmed after {bars_waited} bars (price +{price_change:.2%})",
+                        )
                     elif price_change > -self.confirmation_threshold:
                         # Price down but within threshold - wait more
                         pending["bars_waited"] = bars_waited
                         self._save_state()
-                        return False, f"Waiting for buy confirmation ({bars_waited}/{self.confirmation_bars} bars)"
+                        return (
+                            False,
+                            f"Waiting for buy confirmation ({bars_waited}/{self.confirmation_bars} bars)",
+                        )
                     else:
                         # Price down significantly - cancel signal
                         del self.pending_signals[key]
                         self._save_state()
-                        return False, f"Buy signal cancelled (price fell {price_change:.2%})"
+                        return (
+                            False,
+                            f"Buy signal cancelled (price fell {price_change:.2%})",
+                        )
 
                 elif signal == "sell":
                     # For sell: price should not rise significantly
@@ -133,26 +135,39 @@ class EntryConfirmation:
                         pending["bars_waited"] = bars_waited
                         pending["confirmed"] = True
                         self._save_state()
-                        return True, f"Sell confirmed after {bars_waited} bars (price {-price_change:.2%})"
+                        return (
+                            True,
+                            f"Sell confirmed after {bars_waited} bars (price {-price_change:.2%})",
+                        )
                     elif price_change > -self.confirmation_threshold:
                         # Price up but within threshold - wait more
                         pending["bars_waited"] = bars_waited
                         self._save_state()
-                        return False, f"Waiting for sell confirmation ({bars_waited}/{self.confirmation_bars} bars)"
+                        return (
+                            False,
+                            f"Waiting for sell confirmation ({bars_waited}/{self.confirmation_bars} bars)",
+                        )
                     else:
                         # Price up significantly - cancel signal
                         del self.pending_signals[key]
                         self._save_state()
-                        return False, f"Sell signal cancelled (price rose {-price_change:.2%})"
+                        return (
+                            False,
+                            f"Sell signal cancelled (price rose {-price_change:.2%})",
+                        )
 
         # No matching pending signal - this is a new signal
         self.record_signal(signal, entry_price)
-        return False, f"Signal recorded, waiting {self.confirmation_bars} bars for confirmation"
+        return (
+            False,
+            f"Signal recorded, waiting {self.confirmation_bars} bars for confirmation",
+        )
 
     def clear_confirmed_signals(self):
         """Clear all confirmed signals (call after trade execution)."""
         keys_to_remove = [
-            key for key, signal in self.pending_signals.items()
+            key
+            for key, signal in self.pending_signals.items()
             if signal.get("confirmed", False)
         ]
 
@@ -164,10 +179,9 @@ class EntryConfirmation:
 
     def get_pending_count(self) -> int:
         """Get count of pending signals."""
-        return len([
-            s for s in self.pending_signals.values()
-            if not s.get("confirmed", False)
-        ])
+        return len(
+            [s for s in self.pending_signals.values() if not s.get("confirmed", False)]
+        )
 
 
 class PartialExitManager:
@@ -177,7 +191,7 @@ class PartialExitManager:
         self,
         profit_target_ratio: float = 2.0,
         partial_exit_pct: float = 0.5,
-        trail_remaining: bool = True
+        trail_remaining: bool = True,
     ):
         """
         Args:
@@ -213,7 +227,7 @@ class PartialExitManager:
         qty: float,
         entry_price: float,
         stop_loss_price: float,
-        side: str = "long"
+        side: str = "long",
     ):
         """
         Record a new position for partial exit management.
@@ -246,9 +260,7 @@ class PartialExitManager:
         self._save_positions()
 
     def check_partial_exit(
-        self,
-        symbol: str,
-        current_price: float
+        self, symbol: str, current_price: float
     ) -> Tuple[bool, float, str]:
         """
         Check if partial exit should be executed.
@@ -272,21 +284,31 @@ class PartialExitManager:
             # Update trailing stop for remaining position
             if position["partial_exit_done"]:
                 risk = abs(position["entry_price"] - position["stop_loss_price"])
-                position["trail_stop_price"] = current_price - (risk * 0.5)  # Trail at 50% of original risk
+                position["trail_stop_price"] = current_price - (
+                    risk * 0.5
+                )  # Trail at 50% of original risk
 
         # Check partial exit condition
         if not position["partial_exit_done"]:
             target_price = position["profit_target_price"]
 
             if side == "long" and current_price >= target_price:
-                return True, position["partial_exit_qty"], (
-                    f"Partial exit target reached: ${current_price:.2f} >= ${target_price:.2f} "
-                    f"(exit {position['partial_exit_qty']:.6f} of {position['qty']:.6f})"
+                return (
+                    True,
+                    position["partial_exit_qty"],
+                    (
+                        f"Partial exit target reached: ${current_price:.2f} >= ${target_price:.2f} "
+                        f"(exit {position['partial_exit_qty']:.6f} of {position['qty']:.6f})"
+                    ),
                 )
             elif side == "short" and current_price <= target_price:
-                return True, position["partial_exit_qty"], (
-                    f"Partial exit target reached: ${current_price:.2f} <= ${target_price:.2f} "
-                    f"(exit {position['partial_exit_qty']:.6f} of {position['qty']:.6f})"
+                return (
+                    True,
+                    position["partial_exit_qty"],
+                    (
+                        f"Partial exit target reached: ${current_price:.2f} <= ${target_price:.2f} "
+                        f"(exit {position['partial_exit_qty']:.6f} of {position['qty']:.6f})"
+                    ),
                 )
 
         # Check trailing stop for remaining position
@@ -294,23 +316,27 @@ class PartialExitManager:
             trail_stop = position["trail_stop_price"]
 
             if side == "long" and current_price <= trail_stop:
-                return True, position["remaining_qty"], (
-                    f"Trailing stop hit: ${current_price:.2f} <= ${trail_stop:.2f} "
-                    f"(exit remaining {position['remaining_qty']:.6f})"
+                return (
+                    True,
+                    position["remaining_qty"],
+                    (
+                        f"Trailing stop hit: ${current_price:.2f} <= ${trail_stop:.2f} "
+                        f"(exit remaining {position['remaining_qty']:.6f})"
+                    ),
                 )
             elif side == "short" and current_price >= trail_stop:
-                return True, position["remaining_qty"], (
-                    f"Trailing stop hit: ${current_price:.2f} >= ${trail_stop:.2f} "
-                    f"(exit remaining {position['remaining_qty']:.6f})"
+                return (
+                    True,
+                    position["remaining_qty"],
+                    (
+                        f"Trailing stop hit: ${current_price:.2f} >= ${trail_stop:.2f} "
+                        f"(exit remaining {position['remaining_qty']:.6f})"
+                    ),
                 )
 
         return False, 0.0, "No exit condition met"
 
-    def execute_partial_exit(
-        self,
-        symbol: str,
-        exit_price: float
-    ):
+    def execute_partial_exit(self, symbol: str, exit_price: float):
         """
         Mark partial exit as executed.
 
@@ -328,9 +354,13 @@ class PartialExitManager:
 
                 # Calculate realized profit on partial exit
                 if position["side"] == "long":
-                    profit = (exit_price - position["entry_price"]) * position["partial_exit_qty"]
+                    profit = (exit_price - position["entry_price"]) * position[
+                        "partial_exit_qty"
+                    ]
                 else:
-                    profit = (position["entry_price"] - exit_price) * position["partial_exit_qty"]
+                    profit = (position["entry_price"] - exit_price) * position[
+                        "partial_exit_qty"
+                    ]
 
                 position["partial_exit_profit"] = profit
 

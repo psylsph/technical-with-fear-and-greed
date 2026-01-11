@@ -12,11 +12,9 @@ Features:
 """
 
 import threading
-import queue
 import heapq
 import time
 import json
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,18 +25,14 @@ from typing import (
     Dict,
     List,
     Optional,
-    Set,
-    TypeVar,
-    Generic,
-    Union,
     Awaitable,
 )
 from pathlib import Path
-import weakref
 
 
 class EventPriority(Enum):
     """Event priority levels."""
+
     LOW = 1
     NORMAL = 2
     HIGH = 3

@@ -2,11 +2,8 @@
 Tests for Sentiment Analysis module.
 """
 
-import asyncio
 import pytest
-import pandas as pd
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
 
 from src.sentiment_analysis import (
     SentimentScore,
@@ -137,7 +134,9 @@ class TestFearGreedSentimentAnalyzer:
             else:
                 label = SentimentLabel.EXTREME_GREED
 
-            assert label == expected_label, f"FGI {fgi_value} should map to {expected_label}, got {label}"
+            assert (
+                label == expected_label
+            ), f"FGI {fgi_value} should map to {expected_label}, got {label}"
 
 
 class TestSocialMediaSentimentAnalyzer:

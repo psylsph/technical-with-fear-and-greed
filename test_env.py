@@ -7,6 +7,7 @@ Run this to check if .env file is being loaded properly.
 import os
 from pathlib import Path
 
+
 def main():
     print("🔍 Environment Variables Test")
     print("=" * 50)
@@ -23,10 +24,10 @@ def main():
 
     # Check critical environment variables
     critical_vars = [
-        'TELEGRAM_BOT_TOKEN',
-        'TELEGRAM_CHAT_ID',
-        'ALPACA_API_KEY',
-        'ALPACA_SECRET_KEY'
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "ALPACA_API_KEY",
+        "ALPACA_SECRET_KEY",
     ]
 
     print("\n🔑 Critical Environment Variables:")
@@ -44,7 +45,7 @@ def main():
             all_present = False
 
     # Check Python path
-    python_path = os.getenv('PYTHONPATH', '')
+    python_path = os.getenv("PYTHONPATH", "")
     print(f"\n🐍 PYTHONPATH: {python_path}")
 
     # Check working directory
@@ -58,6 +59,7 @@ def main():
         print("\n⚠️  Some environment variables are missing!")
         print("   Make sure your .env file contains all required variables.")
         return False
+
 
 if __name__ == "__main__":
     main()

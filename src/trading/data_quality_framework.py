@@ -18,6 +18,7 @@ from ..config import PROJECT_ROOT
 
 class QualityIssue(Enum):
     """Types of quality issues."""
+
     MISSING_DATA = "missing_data"
     STALE_DATA = "stale_data"
     OUTLIER = "outlier"
@@ -29,6 +30,7 @@ class QualityIssue(Enum):
 
 class QualityAction(Enum):
     """Actions to take on quality issues."""
+
     KEEP = "keep"
     REMOVE = "remove"
     CORRECT = "correct"
@@ -39,6 +41,7 @@ class QualityAction(Enum):
 @dataclass
 class QualityReport:
     """Comprehensive data quality report."""
+
     source: str
     timestamp: str
     record_count: int
@@ -55,6 +58,7 @@ class QualityReport:
 @dataclass
 class DataPoint:
     """A single data point with metadata."""
+
     value: Any
     timestamp: datetime
     source: str
@@ -226,7 +230,9 @@ class DataCleaner:
             "smoothed_std": float(smoothed.std()),
         }
 
-    def correct_ohlc_inconsistencies(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
+    def correct_ohlc_inconsistencies(
+        self, df: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, Dict]:
         """
         Correct inconsistencies in OHLC data.
 
@@ -290,7 +296,9 @@ class FreshnessChecker:
         self.max_age_minutes = max_age_minutes
         self.warning_age_minutes = warning_age_minutes
 
-    def check_freshness(self, timestamp: datetime, reference_time: datetime = None) -> Dict:
+    def check_freshness(
+        self, timestamp: datetime, reference_time: datetime = None
+    ) -> Dict:
         """
         Check if data is fresh.
 
@@ -373,12 +381,14 @@ class FreshnessChecker:
             gap_size = time_diffs.loc[idx]
             prev_idx = data.index.get_loc(idx) - 1
 
-            stale_periods.append({
-                "start": str(data.index[prev_idx]),
-                "end": str(idx),
-                "gap_size": str(gap_size),
-                "gap_minutes": gap_size.total_seconds() / 60,
-            })
+            stale_periods.append(
+                {
+                    "start": str(data.index[prev_idx]),
+                    "end": str(idx),
+                    "gap_size": str(gap_size),
+                    "gap_minutes": gap_size.total_seconds() / 60,
+                }
+            )
 
         return stale_periods
 
@@ -398,7 +408,13 @@ class CompletenessChecker:
         Args:
             required_columns: List of required column names
         """
-        self.required_columns = required_columns or ["open", "high", "low", "close", "volume"]
+        self.required_columns = required_columns or [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+        ]
 
     def check_completeness(self, data: pd.DataFrame) -> Dict:
         """
@@ -412,7 +428,11 @@ class CompletenessChecker:
         """
         total_records = len(data)
         if total_records == 0:
-            return {"completeness_pct": 0.0, "missing_columns": [], "complete_records": 0}
+            return {
+                "completeness_pct": 0.0,
+                "missing_columns": [],
+                "complete_records": 0,
+            }
 
         # Check for required columns
         present_columns = set(data.columns)
@@ -435,7 +455,9 @@ class CompletenessChecker:
             data[col].isna().sum() if col in data.columns else total_records
             for col in self.required_columns
         )
-        completeness_pct = 100 * (1 - missing_cells / total_cells) if total_cells > 0 else 0
+        completeness_pct = (
+            100 * (1 - missing_cells / total_cells) if total_cells > 0 else 0
+        )
 
         return {
             "completeness_pct": completeness_pct,
@@ -509,54 +531,66 @@ class ConsistencyChecker:
         # Check high >= low
         high_low_issue = df["high"] < df["low"]
         if high_low_issue.any():
-            issues.append({
-                "type": "high_below_low",
-                "count": int(high_low_issue.sum()),
-                "indices": df[high_low_issue].index.tolist(),
-            })
+            issues.append(
+                {
+                    "type": "high_below_low",
+                    "count": int(high_low_issue.sum()),
+                    "indices": df[high_low_issue].index.tolist(),
+                }
+            )
 
         # Check high >= open and high >= close
         high_open_issue = df["high"] < df["open"]
         if high_open_issue.any():
-            issues.append({
-                "type": "high_below_open",
-                "count": int(high_open_issue.sum()),
-            })
+            issues.append(
+                {
+                    "type": "high_below_open",
+                    "count": int(high_open_issue.sum()),
+                }
+            )
 
         high_close_issue = df["high"] < df["close"]
         if high_close_issue.any():
-            issues.append({
-                "type": "high_below_close",
-                "count": int(high_close_issue.sum()),
-            })
+            issues.append(
+                {
+                    "type": "high_below_close",
+                    "count": int(high_close_issue.sum()),
+                }
+            )
 
         # Check low <= open and low <= close
         low_open_issue = df["low"] > df["open"]
         if low_open_issue.any():
-            issues.append({
-                "type": "low_above_open",
-                "count": int(low_open_issue.sum()),
-            })
+            issues.append(
+                {
+                    "type": "low_above_open",
+                    "count": int(low_open_issue.sum()),
+                }
+            )
 
         low_close_issue = df["low"] > df["close"]
         if low_close_issue.any():
-            issues.append({
-                "type": "low_above_close",
-                "count": int(low_close_issue.sum()),
-            })
+            issues.append(
+                {
+                    "type": "low_above_close",
+                    "count": int(low_close_issue.sum()),
+                }
+            )
 
         # Check for zero or negative prices
         zero_price = (
-            (df["open"] <= 0) |
-            (df["high"] <= 0) |
-            (df["low"] <= 0) |
-            (df["close"] <= 0)
+            (df["open"] <= 0)
+            | (df["high"] <= 0)
+            | (df["low"] <= 0)
+            | (df["close"] <= 0)
         )
         if zero_price.any():
-            issues.append({
-                "type": "zero_or_negative_prices",
-                "count": int(zero_price.sum()),
-            })
+            issues.append(
+                {
+                    "type": "zero_or_negative_prices",
+                    "count": int(zero_price.sum()),
+                }
+            )
 
         return {
             "consistent": len(issues) == 0,
@@ -585,8 +619,12 @@ class ConsistencyChecker:
             return {"consistent": False, "reason": "no_common_timestamps"}
 
         # Compare close prices
-        s1_close = source1.loc[common_index, "close"] if "close" in source1.columns else None
-        s2_close = source2.loc[common_index, "close"] if "close" in source2.columns else None
+        s1_close = (
+            source1.loc[common_index, "close"] if "close" in source1.columns else None
+        )
+        s2_close = (
+            source2.loc[common_index, "close"] if "close" in source2.columns else None
+        )
 
         if s1_close is None or s2_close is None:
             return {"consistent": False, "reason": "missing_close_column"}
@@ -622,26 +660,32 @@ class ConsistencyChecker:
         # Check for duplicates
         duplicates = df.index.duplicated()
         if duplicates.any():
-            issues.append({
-                "type": "duplicate_timestamps",
-                "count": int(duplicates.sum()),
-            })
+            issues.append(
+                {
+                    "type": "duplicate_timestamps",
+                    "count": int(duplicates.sum()),
+                }
+            )
 
         # Check if sorted
         is_sorted = df.index.is_monotonic_increasing
         if not is_sorted:
-            issues.append({
-                "type": "not_chronological",
-            })
+            issues.append(
+                {
+                    "type": "not_chronological",
+                }
+            )
 
         # Check for future timestamps
         now = pd.Timestamp.now()
         future = df.index > now
         if future.any():
-            issues.append({
-                "type": "future_timestamps",
-                "count": int(future.sum()),
-            })
+            issues.append(
+                {
+                    "type": "future_timestamps",
+                    "count": int(future.sum()),
+                }
+            )
 
         return {
             "temporal_consistency": len(issues) == 0,
@@ -731,11 +775,13 @@ class DataQualityFramework:
         # 1. Freshness check
         freshness_score = self.freshness_checker.calculate_freshness_score(working_data)
         if freshness_score < 50:
-            issues.append({
-                "type": QualityIssue.STALE_DATA.value,
-                "severity": "high",
-                "message": f"Data freshness score: {freshness_score:.1f}%",
-            })
+            issues.append(
+                {
+                    "type": QualityIssue.STALE_DATA.value,
+                    "severity": "high",
+                    "message": f"Data freshness score: {freshness_score:.1f}%",
+                }
+            )
             recommendations.append("Check data feed - data may be stale")
 
         # 2. Completeness check
@@ -743,41 +789,53 @@ class DataQualityFramework:
         completeness_score = completeness_result["completeness_pct"]
 
         if completeness_result["missing_columns"]:
-            issues.append({
-                "type": QualityIssue.MISSING_DATA.value,
-                "severity": "critical",
-                "message": f"Missing columns: {completeness_result['missing_columns']}",
-            })
+            issues.append(
+                {
+                    "type": QualityIssue.MISSING_DATA.value,
+                    "severity": "critical",
+                    "message": f"Missing columns: {completeness_result['missing_columns']}",
+                }
+            )
 
         if completeness_score < 90:
-            issues.append({
-                "type": QualityIssue.MISSING_DATA.value,
-                "severity": "medium",
-                "message": f"Completeness: {completeness_score:.1f}%",
-            })
+            issues.append(
+                {
+                    "type": QualityIssue.MISSING_DATA.value,
+                    "severity": "medium",
+                    "message": f"Completeness: {completeness_score:.1f}%",
+                }
+            )
 
         # 3. Consistency check
-        consistency_result = self.consistency_checker.check_ohlc_consistency(working_data)
-        temporal_result = self.consistency_checker.check_temporal_consistency(working_data)
+        consistency_result = self.consistency_checker.check_ohlc_consistency(
+            working_data
+        )
+        temporal_result = self.consistency_checker.check_temporal_consistency(
+            working_data
+        )
 
         consistency_score = 100.0
         if not consistency_result["consistent"]:
             consistency_score -= 20 * consistency_result["issue_count"]
             for issue in consistency_result["issues"]:
-                issues.append({
-                    "type": QualityIssue.INCONSISTENT.value,
-                    "severity": "medium",
-                    "message": f"OHLC issue: {issue['type']}",
-                })
+                issues.append(
+                    {
+                        "type": QualityIssue.INCONSISTENT.value,
+                        "severity": "medium",
+                        "message": f"OHLC issue: {issue['type']}",
+                    }
+                )
 
         if not temporal_result["temporal_consistency"]:
             consistency_score -= 10
             for issue in temporal_result["issues"]:
-                issues.append({
-                    "type": QualityIssue.INCONSISTENT.value,
-                    "severity": "low",
-                    "message": f"Temporal issue: {issue['type']}",
-                })
+                issues.append(
+                    {
+                        "type": QualityIssue.INCONSISTENT.value,
+                        "severity": "low",
+                        "message": f"Temporal issue: {issue['type']}",
+                    }
+                )
 
         # 4. Validity check (OHLC relationships valid)
         validity_score = 100.0 if consistency_result["consistent"] else 50.0
@@ -785,33 +843,45 @@ class DataQualityFramework:
         # 5. Clean data if requested
         if clean_data:
             # Correct OHLC inconsistencies
-            corrected, corr_info = self.cleaner.correct_ohlc_inconsistencies(working_data)
+            corrected, corr_info = self.cleaner.correct_ohlc_inconsistencies(
+                working_data
+            )
             if corr_info["corrected"]:
-                actions_taken.append({
-                    "action": "corrected_ohlc",
-                    "details": corr_info["corrections"],
-                })
+                actions_taken.append(
+                    {
+                        "action": "corrected_ohlc",
+                        "details": corr_info["corrections"],
+                    }
+                )
                 working_data = corrected
 
             # Handle outliers in close prices
             if "close" in working_data.columns:
-                cleaned, clean_info = self.cleaner.remove_outliers(working_data["close"])
+                cleaned, clean_info = self.cleaner.remove_outliers(
+                    working_data["close"]
+                )
                 if clean_info["removed_count"] > 0:
-                    actions_taken.append({
-                        "action": "removed_outliers",
-                        "details": clean_info,
-                    })
+                    actions_taken.append(
+                        {
+                            "action": "removed_outliers",
+                            "details": clean_info,
+                        }
+                    )
                     working_data["close"] = cleaned
 
             # Fill missing values
             for col in working_data.columns:
                 if working_data[col].isna().any():
-                    filled, fill_info = self.cleaner.fill_missing_values(working_data[col])
-                    actions_taken.append({
-                        "action": "filled_missing",
-                        "column": col,
-                        "details": fill_info,
-                    })
+                    filled, fill_info = self.cleaner.fill_missing_values(
+                        working_data[col]
+                    )
+                    actions_taken.append(
+                        {
+                            "action": "filled_missing",
+                            "column": col,
+                            "details": fill_info,
+                        }
+                    )
                     working_data[col] = filled
 
         # 6. Calculate overall score
@@ -823,10 +893,10 @@ class DataQualityFramework:
         }
 
         overall_score = (
-            freshness_score * weights["freshness"] +
-            completeness_score * weights["completeness"] +
-            consistency_score * weights["consistency"] +
-            validity_score * weights["validity"]
+            freshness_score * weights["freshness"]
+            + completeness_score * weights["completeness"]
+            + consistency_score * weights["consistency"]
+            + validity_score * weights["validity"]
         )
 
         # Create report
@@ -896,7 +966,8 @@ class DataQualityFramework:
         cutoff = datetime.now() - timedelta(days=days)
 
         filtered = [
-            r for r in self.quality_history
+            r
+            for r in self.quality_history
             if datetime.fromisoformat(r.timestamp) > cutoff
         ]
 
@@ -914,7 +985,9 @@ class DataQualityFramework:
                 }
                 for r in filtered
             ],
-            "trend": "improving" if filtered[-1].overall_score > filtered[0].overall_score else "declining",
+            "trend": "improving"
+            if filtered[-1].overall_score > filtered[0].overall_score
+            else "declining",
         }
 
 

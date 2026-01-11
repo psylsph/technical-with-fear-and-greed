@@ -49,7 +49,9 @@ class APICircuitBreaker:
         with open(self.state_file, "w") as f:
             json.dump(self.state, f, indent=2)
 
-    def record_api_call(self, success: bool, api_name: str = "unknown", error: str = None):
+    def record_api_call(
+        self, success: bool, api_name: str = "unknown", error: str = None
+    ):
         """
         Record an API call result.
 
@@ -127,7 +129,9 @@ class APICircuitBreaker:
                 ]
 
                 if len(recent_calls) >= 5:
-                    failed_calls = sum(1 for call in recent_calls if not call["success"])
+                    failed_calls = sum(
+                        1 for call in recent_calls if not call["success"]
+                    )
                     failure_rate = failed_calls / len(recent_calls)
 
                     if failure_rate <= self.failure_threshold:

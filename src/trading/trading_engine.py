@@ -184,7 +184,9 @@ def execute_trade(
             if current_price:
                 required = qty * current_price * 1.01  # 1% buffer for fees/slippage
                 if required > cash:
-                    print(f"  >>> BUY SKIP: Insufficient cash. Required ${required:.2f}, Available ${cash:.2f}")
+                    print(
+                        f"  >>> BUY SKIP: Insufficient cash. Required ${required:.2f}, Available ${cash:.2f}"
+                    )
                     return None
     elif side.lower() == "sell":
         # Check if holding enough to sell
@@ -192,7 +194,9 @@ def execute_trade(
             print(f"  >>> SELL SKIP: No position to sell (holding {position_qty:.6f})")
             return None
         if qty > position_qty:
-            print(f"  >>> SELL SKIP: Insufficient position. Trying to sell {qty:.6f}, holding {position_qty:.6f}")
+            print(
+                f"  >>> SELL SKIP: Insufficient position. Trying to sell {qty:.6f}, holding {position_qty:.6f}"
+            )
             return None
 
     side_enum = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
@@ -227,10 +231,13 @@ def execute_trade(
     except Exception as e:
         print(f"Order failed: {e}")
         import traceback
+
         traceback.print_exc()
 
         # Send error notification via Telegram
-        get_telegram_bot().send_error_notification(str(e), context=f"Execute {side} {qty} {symbol}")
+        get_telegram_bot().send_error_notification(
+            str(e), context=f"Execute {side} {qty} {symbol}"
+        )
 
         return None
 
@@ -255,7 +262,10 @@ def get_position(qsymbol: str, trading_client) -> dict:
         # Try exact match first, then case-insensitive
         pos = next((p for p in positions if p.symbol == alpaca_symbol), None)
         if not pos:
-            pos = next((p for p in positions if p.symbol.upper() == alpaca_symbol.upper()), None)
+            pos = next(
+                (p for p in positions if p.symbol.upper() == alpaca_symbol.upper()),
+                None,
+            )
 
         if pos:
             qty = float(pos.qty)
@@ -268,10 +278,14 @@ def get_position(qsymbol: str, trading_client) -> dict:
                 # For short positions: profit when current < entry
                 if qty > 0:  # Long
                     unrealized_pl = (current_price - entry_price) * qty
-                    unrealized_plpc = ((current_price - entry_price) / entry_price) * 100
+                    unrealized_plpc = (
+                        (current_price - entry_price) / entry_price
+                    ) * 100
                 else:  # Short
                     unrealized_pl = (entry_price - current_price) * abs(qty)
-                    unrealized_plpc = ((entry_price - current_price) / entry_price) * 100
+                    unrealized_plpc = (
+                        (entry_price - current_price) / entry_price
+                    ) * 100
             else:
                 unrealized_pl = 0.0
                 unrealized_plpc = 0.0
@@ -297,7 +311,9 @@ def get_position(qsymbol: str, trading_client) -> dict:
             else:
                 pl_str = f"⚪ {pl_str}"
 
-            print(f"  Position: {qty:.6f} {alpaca_symbol} | Entry: ${entry_price:.2f} | P&L: {pl_str}")
+            print(
+                f"  Position: {qty:.6f} {alpaca_symbol} | Entry: ${entry_price:.2f} | P&L: {pl_str}"
+            )
 
             return position_info
         else:
@@ -313,6 +329,7 @@ def get_position(qsymbol: str, trading_client) -> dict:
     except Exception as e:
         print(f"Error getting position: {e}")
         import traceback
+
         traceback.print_exc()
         return {
             "qty": 0.0,
@@ -329,10 +346,13 @@ def get_account_info(trading_client) -> Optional[Dict]:
     """Get account information."""
     try:
         from ..config import INITIAL_CAPITAL
+
         account = trading_client.get_account()
         # Calculate total P&L as current equity minus initial capital
         total_pnl = float(account.equity) - INITIAL_CAPITAL
-        total_pnl_pct = (total_pnl / INITIAL_CAPITAL) * 100 if INITIAL_CAPITAL > 0 else 0.0
+        total_pnl_pct = (
+            (total_pnl / INITIAL_CAPITAL) * 100 if INITIAL_CAPITAL > 0 else 0.0
+        )
 
         return {
             "cash": float(account.cash),
@@ -350,7 +370,9 @@ def get_account_info(trading_client) -> Optional[Dict]:
         return None
 
 
-def check_stop_loss(position_info: dict, signal_info: dict, max_drawdown: float = 0.05) -> Tuple[bool, str]:
+def check_stop_loss(
+    position_info: dict, signal_info: dict, max_drawdown: float = 0.05
+) -> Tuple[bool, str]:
     """Check if stop loss should be triggered based on position entry price.
 
     Args:
@@ -376,17 +398,25 @@ def check_stop_loss(position_info: dict, signal_info: dict, max_drawdown: float 
     # For long positions, negative PL means loss
     # For short positions, positive PL means loss (opposite)
     if qty > 0:  # Long position
-        drawdown_pct = unrealized_plpc  # This is in percentage terms (e.g., -5.23 for -5.23%)
+        drawdown_pct = (
+            unrealized_plpc  # This is in percentage terms (e.g., -5.23 for -5.23%)
+        )
         # Convert max_drawdown from decimal to percentage (0.05 -> 5.0)
         max_drawdown_pct = max_drawdown * 100
         if drawdown_pct <= -max_drawdown_pct:
             actual_drawdown = abs(drawdown_pct)
-            return True, f"MAX DRAWDOWN: Position down {actual_drawdown:.2f}% (entry ${entry_price:.2f}, current ${current_price:.2f})"
+            return (
+                True,
+                f"MAX DRAWDOWN: Position down {actual_drawdown:.2f}% (entry ${entry_price:.2f}, current ${current_price:.2f})",
+            )
     else:  # Short position
         drawdown_pct = -unrealized_plpc  # Positive PL when losing on short
         max_drawdown_pct = max_drawdown * 100
         if drawdown_pct >= max_drawdown_pct:
-            return True, f"MAX DRAWDOWN: Short position down {drawdown_pct:.2f}% (entry ${entry_price:.2f}, current ${current_price:.2f})"
+            return (
+                True,
+                f"MAX DRAWDOWN: Short position down {drawdown_pct:.2f}% (entry ${entry_price:.2f}, current ${current_price:.2f})",
+            )
 
     # Check 2: Volatility Stop Loss
     # DISABLED: The volatility stop calculation is too aggressive for live trading
@@ -608,7 +638,7 @@ def should_trade_with_position_limit(
     position_info: dict,
     is_live: bool = False,
     account_info: Optional[Dict] = None,
-    risk_controls: 'RiskControls' = None,
+    risk_controls: "RiskControls" = None,
 ) -> Tuple[str, float]:
     """
     Wrapper around should_trade that enforces position size limits.
@@ -696,13 +726,18 @@ def should_trade_test(signal_info: dict, current_eth: float) -> Tuple[str, float
                 if remaining_allowance > 0:
                     # Use smaller Kelly fraction for adding to position (50% of normal)
                     hist_perf = get_historical_performance()
-                    kelly_fraction = calculate_kelly_fraction(
-                        hist_perf["win_rate"],
-                        hist_perf["avg_win_return"],
-                        hist_perf["avg_loss_return"],
-                    ) * 0.5
+                    kelly_fraction = (
+                        calculate_kelly_fraction(
+                            hist_perf["win_rate"],
+                            hist_perf["avg_win_return"],
+                            hist_perf["avg_loss_return"],
+                        )
+                        * 0.5
+                    )
 
-                    add_amount = min(portfolio_state["cash"] * kelly_fraction, remaining_allowance)
+                    add_amount = min(
+                        portfolio_state["cash"] * kelly_fraction, remaining_allowance
+                    )
                     quantity = (add_amount / price) * 0.95
                     quantity = round(quantity, 6)
 
@@ -792,6 +827,7 @@ def log_trade(
     except Exception as e:
         print(f"Error logging trade: {e}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -890,13 +926,21 @@ def run_test_trading(fgi_df: pd.DataFrame):
                         if portfolio_state["eth_held"] > 0:
                             entry_price = portfolio_state.get("entry_price", 0)
                             if entry_price > 0:
-                                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                                pnl_pct = (
+                                    (current_price - entry_price) / entry_price
+                                ) * 100
                                 if pnl_pct >= 2.0:
-                                    print(f"  No trade: At max position size or insufficient cash (P&L: +{pnl_pct:.1f}%)")
+                                    print(
+                                        f"  No trade: At max position size or insufficient cash (P&L: +{pnl_pct:.1f}%)"
+                                    )
                                 elif current_price > entry_price:
-                                    print(f"  No trade: Position profitable but below 2% threshold (P&L: +{pnl_pct:.1f}%)")
+                                    print(
+                                        f"  No trade: Position profitable but below 2% threshold (P&L: +{pnl_pct:.1f}%)"
+                                    )
                                 else:
-                                    print(f"  No trade: Position not profitable (P&L: {pnl_pct:.1f}%)")
+                                    print(
+                                        f"  No trade: Position not profitable (P&L: {pnl_pct:.1f}%)"
+                                    )
                             else:
                                 print("  No trade: Holding long position")
                         else:
@@ -973,13 +1017,20 @@ def run_live_trading(fgi_df: pd.DataFrame):
         def get_status():
             """Return current trading status for Telegram queries."""
             return {
-                "account": {"equity": 10000.0, "cash": 10000.0, "pnl": 0.0},  # Default values
+                "account": {
+                    "equity": 10000.0,
+                    "cash": 10000.0,
+                    "pnl": 0.0,
+                },  # Default values
                 "positions": [],
                 "recent_trades": [],
             }
+
         telegram_bot.set_status_callback(get_status)
         telegram_bot.start()  # Now starts asynchronously
-        print("Telegram bot startup initiated - notifications will be enabled when connected")
+        print(
+            "Telegram bot startup initiated - notifications will be enabled when connected"
+        )
     else:
         print("Telegram bot not configured - notifications disabled")
 
@@ -1020,6 +1071,7 @@ def run_live_trading(fgi_df: pd.DataFrame):
                 "positions": _live_trading_state.get("positions", []),
                 "recent_trades": _live_trading_state.get("trades", [])[-10:],
             }
+
         telegram_bot.set_status_callback(get_status)
 
         print("\nUsing optimized strategy parameters:")
@@ -1054,23 +1106,25 @@ def run_live_trading(fgi_df: pd.DataFrame):
                 account_info = get_account_info(TRADING_CLIENT)
                 position_info = get_position(SYMBOL, TRADING_CLIENT)
 
-                status_msg = f"🚀 *Trading Bot Started*\n\n"
-                status_msg += f"*Mode:* Paper Trading\n"
+                status_msg = "🚀 *Trading Bot Started*\n\n"
+                status_msg += "*Mode:* Paper Trading\n"
                 status_msg += f"*Symbol:* {SYMBOL}\n"
 
                 if account_info:
-                    status_msg += f"\n*Account:*\n"
+                    status_msg += "\n*Account:*\n"
                     status_msg += f"  Equity: ${account_info.get('equity', 0):,.2f}\n"
                     status_msg += f"  Cash: ${account_info.get('cash', 0):,.2f}\n"
 
                 if position_info.get("qty", 0) != 0:
-                    status_msg += f"\n*Current Position:*\n"
+                    status_msg += "\n*Current Position:*\n"
                     status_msg += f"  {position_info.get('qty', 0):.6f} @ ${position_info.get('avg_entry', 0):,.2f}\n"
-                    status_msg += f"  P&L: {position_info.get('unrealized_pnl_pct', 0):+.2f}%\n"
+                    status_msg += (
+                        f"  P&L: {position_info.get('unrealized_pnl_pct', 0):+.2f}%\n"
+                    )
                 else:
-                    status_msg += f"\n*Position:* None\n"
+                    status_msg += "\n*Position:* None\n"
 
-                status_msg += f"\nUse /status to check anytime"
+                status_msg += "\nUse /status to check anytime"
 
                 telegram_bot.send_notification(status_msg)
             except Exception as e:
@@ -1095,51 +1149,75 @@ def run_live_trading(fgi_df: pd.DataFrame):
                     # Position details already printed in get_position()
                     # Update state for Telegram queries
                     if position_info.get("qty", 0) != 0:
-                        _live_trading_state["positions"] = [{
-                            "symbol": SYMBOL,
-                            "qty": position_info.get("qty", 0),
-                            "avg_entry": position_info.get("entry_price", 0),
-                            "current_price": position_info.get("current_price", 0),
-                            "unrealized_pnl": position_info.get("unrealized_pl", 0),
-                            "unrealized_pnl_pct": position_info.get("unrealized_plpc", 0),
-                        }]
+                        _live_trading_state["positions"] = [
+                            {
+                                "symbol": SYMBOL,
+                                "qty": position_info.get("qty", 0),
+                                "avg_entry": position_info.get("entry_price", 0),
+                                "current_price": position_info.get("current_price", 0),
+                                "unrealized_pnl": position_info.get("unrealized_pl", 0),
+                                "unrealized_pnl_pct": position_info.get(
+                                    "unrealized_plpc", 0
+                                ),
+                            }
+                        ]
                     else:
                         _live_trading_state["positions"] = []
 
                     # Check all risk controls (daily limit, trailing stop, time exit)
                     current_price = position_info.get("current_price", 0)
                     should_stop_risk, risk_reason = risk_controls.check_all_risks(
-                        SYMBOL, position_info, current_price, account_info.get("equity", 0)
+                        SYMBOL,
+                        position_info,
+                        current_price,
+                        account_info.get("equity", 0),
                     )
                     if should_stop_risk:
                         print(f"\n  🚨 RISK CONTROL: {risk_reason}")
 
                         # If it's a position-specific risk (trailing stop, time exit), close the position
                         position_qty = position_info.get("qty", 0.0)
-                        if position_qty != 0 and any(x in risk_reason for x in ["Trailing stop", "Time exit"]):
+                        if position_qty != 0 and any(
+                            x in risk_reason for x in ["Trailing stop", "Time exit"]
+                        ):
                             action = "sell"
                             qty = abs(position_qty)
-                            print(f"  >>> RISK EXIT: {action.upper()} {qty:.6f} {SYMBOL} <<<")
-                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info, indicators={"reason": risk_reason})
+                            print(
+                                f"  >>> RISK EXIT: {action.upper()} {qty:.6f} {SYMBOL} <<<"
+                            )
+                            order = execute_trade(
+                                SYMBOL,
+                                action,
+                                qty,
+                                TRADING_CLIENT,
+                                account_info,
+                                indicators={"reason": risk_reason},
+                            )
                             if order:
                                 risk_controls.record_position_exit(SYMBOL)
                                 # Calculate realized P&L for closing trade
                                 if action == "sell":
-                                    pnl = (current_price - position_info.get("avg_entry", 0)) * qty
+                                    pnl = (
+                                        current_price
+                                        - position_info.get("avg_entry", 0)
+                                    ) * qty
                                     realized_pnl += pnl
-                                trade_log.append({
-                                    "time": now,
-                                    "action": action,
-                                    "qty": qty,
-                                    "price": current_price,
-                                    "reason": risk_reason,
-                                })
+                                trade_log.append(
+                                    {
+                                        "time": now,
+                                        "action": action,
+                                        "qty": qty,
+                                        "price": current_price,
+                                        "reason": risk_reason,
+                                    }
+                                )
                                 _live_trading_state["trades"] = list(trade_log)
 
                         # If daily limit hit, stop all trading for the day
                         if "Daily loss limit" in risk_reason:
                             print("\n  ⛔ DAILY LOSS LIMIT REACHED - TRADING HALTED")
                             import time
+
                             time.sleep(CHECK_INTERVAL)
                             continue
 
@@ -1166,20 +1244,34 @@ def run_live_trading(fgi_df: pd.DataFrame):
                         # CRITICAL: Check stop losses FIRST if holding a position
                         position_qty = position_info.get("qty", 0.0)
                         if position_qty != 0:
-                            should_exit, exit_reason = check_stop_loss(position_info, signal_info, max_drawdown=0.05)
+                            should_exit, exit_reason = check_stop_loss(
+                                position_info, signal_info, max_drawdown=0.05
+                            )
                             if should_exit:
                                 print(f"\n  🚨 STOP LOSS TRIGGERED: {exit_reason}")
                                 # Force sell the entire position
                                 action = "sell"
                                 qty = abs(position_qty)
-                                print(f"  >>> EMERGENCY EXIT: {action.upper()} {qty:.6f} {SYMBOL} <<<")
-                                order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info, indicators=ind)
+                                print(
+                                    f"  >>> EMERGENCY EXIT: {action.upper()} {qty:.6f} {SYMBOL} <<<"
+                                )
+                                order = execute_trade(
+                                    SYMBOL,
+                                    action,
+                                    qty,
+                                    TRADING_CLIENT,
+                                    account_info,
+                                    indicators=ind,
+                                )
                                 order_id = order.id if order else None
                                 if order:
                                     log_trade(signal_info, action, qty, order_id)
                                     # Calculate realized P&L for closing trade
                                     if action == "sell":
-                                        pnl = (ind.get("price", 0) - position_info.get("avg_entry", 0)) * qty
+                                        pnl = (
+                                            ind.get("price", 0)
+                                            - position_info.get("avg_entry", 0)
+                                        ) * qty
                                         realized_pnl += pnl
                                     trade_log.append(
                                         {
@@ -1193,6 +1285,7 @@ def run_live_trading(fgi_df: pd.DataFrame):
                                     _live_trading_state["trades"] = list(trade_log)
                                 # Skip normal trading logic after stop loss
                                 import time
+
                                 print(f"\nSleeping {CHECK_INTERVAL} seconds...")
                                 time.sleep(CHECK_INTERVAL)
                                 continue
@@ -1210,17 +1303,29 @@ def run_live_trading(fgi_df: pd.DataFrame):
                             print(
                                 f"\n  >>> Executing {action.upper()} {qty:.6f} {SYMBOL} <<<"
                             )
-                            order = execute_trade(SYMBOL, action, qty, TRADING_CLIENT, account_info, indicators=ind)
+                            order = execute_trade(
+                                SYMBOL,
+                                action,
+                                qty,
+                                TRADING_CLIENT,
+                                account_info,
+                                indicators=ind,
+                            )
                             order_id = order.id if order else None
                             if order:  # Only log successful trades
                                 log_trade(signal_info, action, qty, order_id)
                                 # Record position entry/exit for risk controls
                                 if action == "buy":
-                                    risk_controls.record_position_entry(SYMBOL, current_price)
+                                    risk_controls.record_position_entry(
+                                        SYMBOL, current_price
+                                    )
                                 elif action == "sell":
                                     risk_controls.record_position_exit(SYMBOL)
                                     # Calculate realized P&L for closing trade
-                                    pnl = (ind.get("price", 0) - position_info.get("avg_entry", 0)) * qty
+                                    pnl = (
+                                        ind.get("price", 0)
+                                        - position_info.get("avg_entry", 0)
+                                    ) * qty
                                     realized_pnl += pnl
                             trade_log.append(
                                 {
@@ -1242,7 +1347,9 @@ def run_live_trading(fgi_df: pd.DataFrame):
                         risk_status = risk_controls.get_status_summary()
                         if risk_status["daily_limits"]["num_trades"] > 0:
                             daily = risk_status["daily_limits"]
-                            print(f"  Daily P&L: {daily['daily_pnl_pct']:.2%} (${daily['daily_pnl_$']:.2f}) | Trades: {daily['num_trades']} | Loss limit remaining: {daily['remaining_loss_limit']:.2%}")
+                            print(
+                                f"  Daily P&L: {daily['daily_pnl_pct']:.2%} (${daily['daily_pnl_$']:.2f}) | Trades: {daily['num_trades']} | Loss limit remaining: {daily['remaining_loss_limit']:.2%}"
+                            )
 
                     else:
                         print("  Could not analyze signal (data fetch error)")

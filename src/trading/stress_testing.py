@@ -14,6 +14,7 @@ import numpy as np
 
 class StressScenario(Enum):
     """Types of stress scenarios."""
+
     FLASH_CRASH = "flash_crash"
     BLACK_SWAN = "black_swan"
     VOLATILITY_SPIKE = "volatility_spike"
@@ -27,6 +28,7 @@ class StressScenario(Enum):
 @dataclass
 class StressTestResult:
     """Result of a stress test."""
+
     scenario: StressScenario
     final_equity: float
     total_return: float
@@ -52,7 +54,7 @@ class StressTester:
         self,
         initial_capital: float = 10000.0,
         survival_threshold: float = 0.5,  # 50% of initial capital
-        max_drawdown_limit: float = 0.4,     # 40% max drawdown
+        max_drawdown_limit: float = 0.4,  # 40% max drawdown
     ):
         """
         Args:
@@ -118,8 +120,8 @@ class StressTester:
         returns.iloc[event_day] = event_magnitude
 
         # Increase volatility after event
-        post_event_returns = returns.iloc[event_day + 1:]
-        returns.iloc[event_day + 1:] = post_event_returns * volatility_multiplier
+        post_event_returns = returns.iloc[event_day + 1 :]
+        returns.iloc[event_day + 1 :] = post_event_returns * volatility_multiplier
 
         return returns
 
@@ -145,10 +147,14 @@ class StressTester:
         returns = base_returns.copy()
 
         if spike_day is None:
-            spike_day = random.randint(len(returns) // 4, len(returns) - spike_duration - 1)
+            spike_day = random.randint(
+                len(returns) // 4, len(returns) - spike_duration - 1
+            )
 
         end_day = min(spike_day + spike_duration, len(returns))
-        returns.iloc[spike_day:end_day] = returns.iloc[spike_day:end_day] * volatility_multiplier
+        returns.iloc[spike_day:end_day] = (
+            returns.iloc[spike_day:end_day] * volatility_multiplier
+        )
 
         return returns
 
@@ -232,7 +238,9 @@ class StressTester:
         returns = base_returns.copy()
 
         if trend_day is None:
-            trend_day = random.randint(len(returns) // 4, len(returns) - trend_duration - 1)
+            trend_day = random.randint(
+                len(returns) // 4, len(returns) - trend_duration - 1
+            )
 
         end_day = min(trend_day + trend_duration, len(returns))
         returns.iloc[trend_day:end_day] = daily_trend
@@ -276,7 +284,7 @@ class StressTester:
         base_returns: pd.Series,
         scenario: StressScenario,
         signal_generator: Callable[[pd.Series], pd.Series] = None,
-        **scenario_params
+        **scenario_params,
     ) -> StressTestResult:
         """
         Run a single stress test.
@@ -292,29 +300,49 @@ class StressTester:
         """
         # Create scenario returns
         if scenario == StressScenario.FLASH_CRASH:
-            test_returns = self.create_flash_crash_scenario(base_returns, **scenario_params)
-            details = f"Flash crash: {scenario_params.get('crash_magnitude', -0.30):.1%} drop"
+            test_returns = self.create_flash_crash_scenario(
+                base_returns, **scenario_params
+            )
+            details = (
+                f"Flash crash: {scenario_params.get('crash_magnitude', -0.30):.1%} drop"
+            )
         elif scenario == StressScenario.BLACK_SWAN:
-            test_returns = self.create_black_swan_scenario(base_returns, **scenario_params)
-            details = f"Black swan: {scenario_params.get('event_magnitude', -0.50):.1%} drop"
+            test_returns = self.create_black_swan_scenario(
+                base_returns, **scenario_params
+            )
+            details = (
+                f"Black swan: {scenario_params.get('event_magnitude', -0.50):.1%} drop"
+            )
         elif scenario == StressScenario.VOLATILITY_SPIKE:
-            test_returns = self.create_volatility_spike_scenario(base_returns, **scenario_params)
+            test_returns = self.create_volatility_spike_scenario(
+                base_returns, **scenario_params
+            )
             details = f"Volatility spike: {scenario_params.get('volatility_multiplier', 5.0)}x normal"
         elif scenario == StressScenario.LIQUIDITY_CRISIS:
-            test_returns = self.create_liquidity_crisis_scenario(base_returns, **scenario_params)
+            test_returns = self.create_liquidity_crisis_scenario(
+                base_returns, **scenario_params
+            )
             details = f"Liquidity crisis: {scenario_params.get('spread_increase', 0.05):.1%} spread increase"
         elif scenario == StressScenario.GAP_DOWN:
             test_returns = self.create_gap_scenario(base_returns, **scenario_params)
             details = f"Gap down: {scenario_params.get('gap_magnitude', -0.15):.1%}"
         elif scenario == StressScenario.GAP_UP:
-            test_returns = self.create_gap_scenario(base_returns, gap_magnitude=0.15, **scenario_params)
+            test_returns = self.create_gap_scenario(
+                base_returns, gap_magnitude=0.15, **scenario_params
+            )
             details = "Gap up: +15%"
         elif scenario == StressScenario.EXTREME_TREND:
-            test_returns = self.create_extreme_trend_scenario(base_returns, **scenario_params)
-            details = f"Extreme trend: {scenario_params.get('daily_trend', -0.02):.1%} daily"
+            test_returns = self.create_extreme_trend_scenario(
+                base_returns, **scenario_params
+            )
+            details = (
+                f"Extreme trend: {scenario_params.get('daily_trend', -0.02):.1%} daily"
+            )
         elif scenario == StressScenario.WHIPSAW:
             test_returns = self.create_whipsaw_scenario(base_returns, **scenario_params)
-            details = f"Whipsaw: {scenario_params.get('volatility', 0.10):.1%} daily swings"
+            details = (
+                f"Whipsaw: {scenario_params.get('volatility', 0.10):.1%} daily swings"
+            )
         else:
             test_returns = base_returns
             details = "Unknown scenario"
@@ -322,7 +350,9 @@ class StressTester:
         # Apply strategy if signal generator provided
         if signal_generator is not None:
             # Note: This is simplified - in practice you'd need price data too
-            test_returns = test_returns * signal_generator(test_returns).shift(1).fillna(0)
+            test_returns = test_returns * signal_generator(test_returns).shift(
+                1
+            ).fillna(0)
 
         # Calculate performance
         equity_curve = self.initial_capital * (1 + test_returns).cumprod()
@@ -337,8 +367,8 @@ class StressTester:
         # Check survival
         final_equity_pct = final_equity / self.initial_capital
         survived = (
-            final_equity_pct >= self.survival_threshold and
-            max_drawdown <= self.max_drawdown_limit
+            final_equity_pct >= self.survival_threshold
+            and max_drawdown <= self.max_drawdown_limit
         )
 
         return StressTestResult(
@@ -388,7 +418,9 @@ class StressTester:
         ]
 
         for scenario, params in scenarios:
-            result = self.run_stress_test(base_returns, scenario, signal_generator, **params)
+            result = self.run_stress_test(
+                base_returns, scenario, signal_generator, **params
+            )
             results.append(result)
 
         # Calculate summary
@@ -410,7 +442,9 @@ class StressTester:
         for scenario in StressScenario:
             scenario_results = [r for r in results if r.scenario == scenario]
             if scenario_results:
-                survival_rate = sum(1 for r in scenario_results if r.survived) / len(scenario_results)
+                survival_rate = sum(1 for r in scenario_results if r.survived) / len(
+                    scenario_results
+                )
                 scenario_survival[scenario.value] = survival_rate
 
         return {
@@ -428,18 +462,24 @@ class StressTester:
         }
 
     def get_stress_test_report(
-        self,
-        results: List[StressTestResult],
-        summary: Dict
+        self, results: List[StressTestResult], summary: Dict
     ) -> str:
         """Generate human-readable stress test report."""
-        emoji = "✅" if summary["survival_rate"] >= 0.8 else "🟠" if summary["survival_rate"] >= 0.5 else "🔴"
+        emoji = (
+            "✅"
+            if summary["survival_rate"] >= 0.8
+            else "🟠"
+            if summary["survival_rate"] >= 0.5
+            else "🔴"
+        )
 
         report = f"{emoji} Stress Test Results\n"
         report += f"{'='*60}\n\n"
 
         report += f"Overall Survival Rate: {summary['survival_rate']:.1%} "
-        report += f"({summary['survived_tests']}/{summary['total_tests']} tests passed)\n\n"
+        report += (
+            f"({summary['survived_tests']}/{summary['total_tests']} tests passed)\n\n"
+        )
 
         report += "Average Performance:\n"
         report += f"  Avg Final Equity: ${summary['avg_final_equity']:,.2f}\n"
@@ -468,8 +508,7 @@ class StressTester:
 
 
 def run_stress_tests(
-    returns: pd.Series,
-    initial_capital: float = 10000.0
+    returns: pd.Series, initial_capital: float = 10000.0
 ) -> Tuple[List[StressTestResult], str]:
     """
     Convenience function to run all stress tests.

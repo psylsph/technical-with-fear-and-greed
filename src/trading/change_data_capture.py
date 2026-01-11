@@ -18,6 +18,7 @@ from ..config import PROJECT_ROOT
 
 class ChangeType(Enum):
     """Types of data changes."""
+
     INSERT = "insert"  # New data
     UPDATE = "update"  # Modified data
     DELETE = "delete"  # Removed data
@@ -27,6 +28,7 @@ class ChangeType(Enum):
 @dataclass
 class DataChange:
     """Represents a single data change."""
+
     change_type: ChangeType
     row_id: str
     timestamp: str
@@ -41,6 +43,7 @@ class DataChange:
 @dataclass
 class ChangeSet:
     """A set of changes for a processing run."""
+
     source: str
     capture_time: str
     inserts: List[DataChange]
@@ -58,6 +61,7 @@ class ChangeSet:
 @dataclass
 class DataSnapshot:
     """Snapshot of data at a point in time."""
+
     snapshot_id: str
     source: str
     timestamp: str
@@ -102,10 +106,7 @@ class ChangeDetector:
     def _calculate_row_hash(self, row: pd.Series) -> str:
         """Calculate hash for a row."""
         # Exclude ignored columns
-        cols_to_hash = [
-            col for col in row.index
-            if col not in self.ignore_columns
-        ]
+        cols_to_hash = [col for col in row.index if col not in self.ignore_columns]
 
         if self.hash_columns:
             cols_to_hash = [col for col in cols_to_hash if col in self.hash_columns]
@@ -158,8 +159,12 @@ class ChangeDetector:
                 deletes.append(change)
         else:
             # Compare row by row
-            prev_keys = set(self._get_row_key(row) for _, row in previous_data.iterrows())
-            curr_keys = set(self._get_row_key(row) for _, row in current_data.iterrows())
+            prev_keys = set(
+                self._get_row_key(row) for _, row in previous_data.iterrows()
+            )
+            curr_keys = set(
+                self._get_row_key(row) for _, row in current_data.iterrows()
+            )
 
             # Detect inserts (new keys)
             inserted_keys = curr_keys - prev_keys
@@ -532,7 +537,8 @@ class ChangeDataCapture:
         cutoff = datetime.now() - timedelta(hours=hours)
 
         recent_changes = [
-            cs for cs in self.change_history
+            cs
+            for cs in self.change_history
             if datetime.fromisoformat(cs.capture_time) > cutoff
         ]
 
@@ -549,7 +555,9 @@ class ChangeDataCapture:
         total_changes = sum(cs.total_changes for cs in recent_changes)
 
         # Calculate change rate
-        avg_changes_per_set = total_changes / len(recent_changes) if recent_changes else 0
+        avg_changes_per_set = (
+            total_changes / len(recent_changes) if recent_changes else 0
+        )
 
         return {
             "period_hours": hours,
@@ -589,9 +597,7 @@ class CDCManager:
         Args:
             state_dir: Directory for CDC state files
         """
-        self.state_dir = state_dir or os.path.join(
-            PROJECT_ROOT, "cache", "cdc_state"
-        )
+        self.state_dir = state_dir or os.path.join(PROJECT_ROOT, "cache", "cdc_state")
         os.makedirs(self.state_dir, exist_ok=True)
 
         self.instances: Dict[str, ChangeDataCapture] = {}

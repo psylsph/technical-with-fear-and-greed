@@ -14,13 +14,13 @@ import os
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from enum import Enum
-import json
 
 
 class Environment(Enum):
     """Application environments."""
+
     DEV = "dev"
     STAGING = "staging"
     PROD = "prod"
@@ -29,6 +29,7 @@ class Environment(Enum):
 @dataclass
 class TradingConfig:
     """Trading strategy configuration."""
+
     initial_capital: float = 1000
     maker_fee: float = 0.0015
     taker_fee: float = 0.0025
@@ -61,10 +62,13 @@ class TradingConfig:
 @dataclass
 class APIConfig:
     """API configuration."""
+
     # Alpaca API
     alpaca_api_key: Optional[str] = None
     alpaca_api_secret: Optional[str] = None
-    alpaca_base_url: str = "https://paper-api.alpaca.markets"  # Paper trading by default
+    alpaca_base_url: str = (
+        "https://paper-api.alpaca.markets"  # Paper trading by default
+    )
 
     # Coinbase API
     coinbase_api_key: Optional[str] = None
@@ -81,6 +85,7 @@ class APIConfig:
 @dataclass
 class DatabaseConfig:
     """Database configuration."""
+
     # SQLite paths
     market_data_db: str = "cache/market_data.db"
     portfolio_state_file: str = "test_portfolio_state.json"
@@ -93,6 +98,7 @@ class DatabaseConfig:
 @dataclass
 class MonitoringConfig:
     """Monitoring and alerting configuration."""
+
     # Email notifications
     email_enabled: bool = False
     smtp_server: str = "smtp.gmail.com"
@@ -114,6 +120,7 @@ class MonitoringConfig:
 @dataclass
 class LoggingConfig:
     """Logging configuration."""
+
     log_level: str = "INFO"
     log_file: str = "logs/trading.log"
     log_max_bytes: int = 10 * 1024 * 1024  # 10MB
@@ -127,6 +134,7 @@ class LoggingConfig:
 @dataclass
 class SystemConfig:
     """Complete system configuration."""
+
     environment: Environment = Environment.DEV
     trading: TradingConfig = field(default_factory=TradingConfig)
     api: APIConfig = field(default_factory=APIConfig)
@@ -209,15 +217,29 @@ class ConfigManager:
     def _load_from_env(self, config: SystemConfig) -> None:
         """Override configuration with environment variables."""
         # API keys
-        config.api.alpaca_api_key = os.getenv("ALPACA_API_KEY", config.api.alpaca_api_key)
-        config.api.alpaca_api_secret = os.getenv("ALPACA_API_SECRET", config.api.alpaca_api_secret)
-        config.api.coinbase_api_key = os.getenv("COINBASE_API_KEY", config.api.coinbase_api_key)
-        config.api.coinbase_api_secret = os.getenv("COINBASE_API_SECRET", config.api.coinbase_api_secret)
+        config.api.alpaca_api_key = os.getenv(
+            "ALPACA_API_KEY", config.api.alpaca_api_key
+        )
+        config.api.alpaca_api_secret = os.getenv(
+            "ALPACA_API_SECRET", config.api.alpaca_api_secret
+        )
+        config.api.coinbase_api_key = os.getenv(
+            "COINBASE_API_KEY", config.api.coinbase_api_key
+        )
+        config.api.coinbase_api_secret = os.getenv(
+            "COINBASE_API_SECRET", config.api.coinbase_api_secret
+        )
 
         # Email settings
-        config.monitoring.smtp_username = os.getenv("SMTP_USERNAME", config.monitoring.smtp_username)
-        config.monitoring.smtp_password = os.getenv("SMTP_PASSWORD", config.monitoring.smtp_password)
-        config.monitoring.email_from = os.getenv("EMAIL_FROM", config.monitoring.email_from)
+        config.monitoring.smtp_username = os.getenv(
+            "SMTP_USERNAME", config.monitoring.smtp_username
+        )
+        config.monitoring.smtp_password = os.getenv(
+            "SMTP_PASSWORD", config.monitoring.smtp_password
+        )
+        config.monitoring.email_from = os.getenv(
+            "EMAIL_FROM", config.monitoring.email_from
+        )
 
         if email_to := os.getenv("EMAIL_TO"):
             config.monitoring.email_to = email_to.split(",")
@@ -237,7 +259,9 @@ class ConfigManager:
         if email_enabled := os.getenv("EMAIL_ENABLED"):
             config.monitoring.email_enabled = email_enabled.lower() == "true"
 
-    def _apply_dict_to_config(self, config: SystemConfig, config_dict: Dict[str, Any]) -> None:
+    def _apply_dict_to_config(
+        self, config: SystemConfig, config_dict: Dict[str, Any]
+    ) -> None:
         """Apply a dictionary to the configuration object."""
         for section, values in config_dict.items():
             if hasattr(config, section):
@@ -250,21 +274,41 @@ class ConfigManager:
         """Validate configuration values."""
         # Validate trading config
         assert config.trading.initial_capital > 0, "initial_capital must be positive"
-        assert 0 <= config.trading.maker_fee <= 0.01, "maker_fee must be between 0 and 1%"
-        assert 0 <= config.trading.taker_fee <= 0.01, "taker_fee must be between 0 and 1%"
-        assert 0 < config.trading.position_size_limit <= 1, "position_size_limit must be between 0 and 100%"
-        assert 0 < config.trading.max_drawdown_stop <= 1, "max_drawdown_stop must be between 0 and 100%"
+        assert (
+            0 <= config.trading.maker_fee <= 0.01
+        ), "maker_fee must be between 0 and 1%"
+        assert (
+            0 <= config.trading.taker_fee <= 0.01
+        ), "taker_fee must be between 0 and 1%"
+        assert (
+            0 < config.trading.position_size_limit <= 1
+        ), "position_size_limit must be between 0 and 100%"
+        assert (
+            0 < config.trading.max_drawdown_stop <= 1
+        ), "max_drawdown_stop must be between 0 and 100%"
 
         # Validate API config
-        assert config.api.max_requests_per_minute > 0, "max_requests_per_minute must be positive"
-        assert config.api.max_requests_per_second > 0, "max_requests_per_second must be positive"
+        assert (
+            config.api.max_requests_per_minute > 0
+        ), "max_requests_per_minute must be positive"
+        assert (
+            config.api.max_requests_per_second > 0
+        ), "max_requests_per_second must be positive"
 
         # Validate monitoring config
         if config.monitoring.email_enabled:
-            assert config.monitoring.smtp_username is not None, "smtp_username required when email_enabled"
-            assert config.monitoring.smtp_password is not None, "smtp_password required when email_enabled"
-            assert config.monitoring.email_from is not None, "email_from required when email_enabled"
-            assert len(config.monitoring.email_to) > 0, "email_to required when email_enabled"
+            assert (
+                config.monitoring.smtp_username is not None
+            ), "smtp_username required when email_enabled"
+            assert (
+                config.monitoring.smtp_password is not None
+            ), "smtp_password required when email_enabled"
+            assert (
+                config.monitoring.email_from is not None
+            ), "email_from required when email_enabled"
+            assert (
+                len(config.monitoring.email_to) > 0
+            ), "email_to required when email_enabled"
 
     def get_trading_config(self) -> TradingConfig:
         """Get trading configuration."""
@@ -329,12 +373,21 @@ class ConfigManager:
 
         # API config (exclude secrets)
         for key, value in self._config.api.__dict__.items():
-            if not key.startswith("_") and value is not None and "key" not in key.lower() and "secret" not in key.lower():
+            if (
+                not key.startswith("_")
+                and value is not None
+                and "key" not in key.lower()
+                and "secret" not in key.lower()
+            ):
                 config_dict["api"][key] = value
 
         # Monitoring config (exclude secrets)
         for key, value in self._config.monitoring.__dict__.items():
-            if not key.startswith("_") and value is not None and "password" not in key.lower():
+            if (
+                not key.startswith("_")
+                and value is not None
+                and "password" not in key.lower()
+            ):
                 config_dict["monitoring"][key] = value
 
         return config_dict

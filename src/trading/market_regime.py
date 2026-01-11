@@ -16,10 +16,11 @@ from ..config import PROJECT_ROOT
 
 class MarketRegime(Enum):
     """Market regime types."""
+
     STRONG_BULL = "strong_bull"  # Strong uptrend, high momentum
-    BULL = "bull"                # Uptrend
-    SIDEWAYS = "sideways"        # Range-bound
-    BEAR = "bear"                # Downtrend
+    BULL = "bull"  # Uptrend
+    SIDEWAYS = "sideways"  # Range-bound
+    BEAR = "bear"  # Downtrend
     STRONG_BEAR = "strong_bear"  # Strong downtrend, high volatility
 
 
@@ -30,12 +31,12 @@ class RegimeParameters:
     PARAMETERS = {
         MarketRegime.STRONG_BULL: {
             "position_size_multiplier": 1.5,  # Larger positions in strong uptrend
-            "stop_loss_multiplier": 1.2,      # Wider stops (let profits run)
-            "take_profit_multiplier": 1.5,    # Higher profit targets
-            "trail_stop_multiplier": 0.8,     # Tighter trailing stops (lock in profits)
-            "entry_threshold": 35,             # Lower fear threshold (easier entry)
-            "exit_threshold": 75,              # Higher greed threshold (hold longer)
-            "max_drawdown": 0.06,              # 6% max drawdown
+            "stop_loss_multiplier": 1.2,  # Wider stops (let profits run)
+            "take_profit_multiplier": 1.5,  # Higher profit targets
+            "trail_stop_multiplier": 0.8,  # Tighter trailing stops (lock in profits)
+            "entry_threshold": 35,  # Lower fear threshold (easier entry)
+            "exit_threshold": 75,  # Higher greed threshold (hold longer)
+            "max_drawdown": 0.06,  # 6% max drawdown
             "leverage": 1.2,
         },
         MarketRegime.BULL: {
@@ -45,37 +46,37 @@ class RegimeParameters:
             "trail_stop_multiplier": 1.0,
             "entry_threshold": 30,
             "exit_threshold": 70,
-            "max_drawdown": 0.05,              # 5% max drawdown
+            "max_drawdown": 0.05,  # 5% max drawdown
             "leverage": 1.0,
         },
         MarketRegime.SIDEWAYS: {
             "position_size_multiplier": 0.8,  # Smaller positions in chop
-            "stop_loss_multiplier": 0.8,       # Tighter stops
-            "take_profit_multiplier": 0.8,     # Lower profit targets
-            "trail_stop_multiplier": 1.2,      # Wider trailing stops
-            "entry_threshold": 25,             # More selective entries
-            "exit_threshold": 65,              # Earlier exits
-            "max_drawdown": 0.04,              # 4% max drawdown
+            "stop_loss_multiplier": 0.8,  # Tighter stops
+            "take_profit_multiplier": 0.8,  # Lower profit targets
+            "trail_stop_multiplier": 1.2,  # Wider trailing stops
+            "entry_threshold": 25,  # More selective entries
+            "exit_threshold": 65,  # Earlier exits
+            "max_drawdown": 0.04,  # 4% max drawdown
             "leverage": 1.0,
         },
         MarketRegime.BEAR: {
             "position_size_multiplier": 0.6,  # Smaller positions
-            "stop_loss_multiplier": 0.7,       # Very tight stops
-            "take_profit_multiplier": 0.6,     # Quick profits
-            "trail_stop_multiplier": 0.7,      # Tight trailing stops
-            "entry_threshold": 20,             # Very selective (extreme fear only)
-            "exit_threshold": 60,              # Quick exits
-            "max_drawdown": 0.03,              # 3% max drawdown (conservative)
+            "stop_loss_multiplier": 0.7,  # Very tight stops
+            "take_profit_multiplier": 0.6,  # Quick profits
+            "trail_stop_multiplier": 0.7,  # Tight trailing stops
+            "entry_threshold": 20,  # Very selective (extreme fear only)
+            "exit_threshold": 60,  # Quick exits
+            "max_drawdown": 0.03,  # 3% max drawdown (conservative)
             "leverage": 1.0,
         },
         MarketRegime.STRONG_BEAR: {
             "position_size_multiplier": 0.3,  # Minimal positions
-            "stop_loss_multiplier": 0.5,       # Very tight stops
-            "take_profit_multiplier": 0.5,     # Quick scalps only
+            "stop_loss_multiplier": 0.5,  # Very tight stops
+            "take_profit_multiplier": 0.5,  # Quick scalps only
             "trail_stop_multiplier": 0.5,
-            "entry_threshold": 15,             # Only extreme panic
-            "exit_threshold": 55,              # Very quick exits
-            "max_drawdown": 0.02,              # 2% max drawdown (very conservative)
+            "entry_threshold": 15,  # Only extreme panic
+            "exit_threshold": 55,  # Very quick exits
+            "max_drawdown": 0.02,  # 2% max drawdown (very conservative)
             "leverage": 1.0,
         },
     }
@@ -88,7 +89,7 @@ class MarketRegimeDetector:
         self,
         lookback_period: int = 50,
         regime_lookback: int = 20,
-        state_file: str = None
+        state_file: str = None,
     ):
         """
         Args:
@@ -128,7 +129,7 @@ class MarketRegimeDetector:
         close: pd.Series,
         high: pd.Series = None,
         low: pd.Series = None,
-        volume: pd.Series = None
+        volume: pd.Series = None,
     ) -> Tuple[MarketRegime, Dict]:
         """
         Detect current market regime.
@@ -153,10 +154,12 @@ class MarketRegimeDetector:
 
         # Trend indicators
         sma_short = close.iloc[-20:].mean() if len(close) >= 20 else current_price
-        sma_long = close.iloc[-self.lookback_period:].mean()
+        sma_long = close.iloc[-self.lookback_period :].mean()
 
         # Momentum
-        price_momentum = (current_price - close.iloc[-self.lookback_period]) / close.iloc[-self.lookback_period]
+        price_momentum = (
+            current_price - close.iloc[-self.lookback_period]
+        ) / close.iloc[-self.lookback_period]
 
         # Volatility (using ATR if high/low available, else using close differences)
         if high is not None and low is not None and len(high) >= 14:
@@ -170,6 +173,7 @@ class MarketRegimeDetector:
         if high is not None and low is not None:
             try:
                 from ..indicators import calculate_adx
+
                 adx = calculate_adx(high, low, close, 14)
                 adx_val = adx.iloc[-1] if len(adx) > 0 else 20
             except Exception:
@@ -179,20 +183,12 @@ class MarketRegimeDetector:
 
         # Determine regime
         regime = self._classify_regime(
-            price_momentum,
-            sma_short,
-            sma_long,
-            volatility,
-            adx_val,
-            current_price
+            price_momentum, sma_short, sma_long, volatility, adx_val, current_price
         )
 
         # Calculate confidence
         confidence = self._calculate_regime_confidence(
-            close,
-            regime,
-            volatility,
-            adx_val
+            close, regime, volatility, adx_val
         )
 
         details = {
@@ -208,11 +204,13 @@ class MarketRegimeDetector:
 
         # Update state
         self.current_regime = regime.value
-        self.regime_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "regime": regime.value,
-            "confidence": float(confidence),
-        })
+        self.regime_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "regime": regime.value,
+                "confidence": float(confidence),
+            }
+        )
 
         # Keep only last 100 regime changes
         if len(self.regime_history) > 100:
@@ -225,11 +223,7 @@ class MarketRegimeDetector:
         return regime, details
 
     def _calculate_atr(
-        self,
-        high: pd.Series,
-        low: pd.Series,
-        close: pd.Series,
-        period: int
+        self, high: pd.Series, low: pd.Series, close: pd.Series, period: int
     ) -> float:
         """Calculate Average True Range."""
         high_low = high - low
@@ -246,7 +240,7 @@ class MarketRegimeDetector:
         sma_long: float,
         volatility: float,
         adx: float,
-        current_price: float
+        current_price: float,
     ) -> MarketRegime:
         """Classify market regime based on indicators."""
 
@@ -270,11 +264,7 @@ class MarketRegimeDetector:
             return MarketRegime.SIDEWAYS
 
     def _calculate_regime_confidence(
-        self,
-        close: pd.Series,
-        regime: MarketRegime,
-        volatility: float,
-        adx: float
+        self, close: pd.Series, regime: MarketRegime, volatility: float, adx: float
     ) -> float:
         """Calculate confidence in regime detection (0-1)."""
         # Base confidence on ADX (trend strength)
@@ -310,12 +300,12 @@ class MarketRegimeDetector:
             else:
                 regime = MarketRegime.SIDEWAYS
 
-        return RegimeParameters.PARAMETERS.get(regime, RegimeParameters.PARAMETERS[MarketRegime.SIDEWAYS]).copy()
+        return RegimeParameters.PARAMETERS.get(
+            regime, RegimeParameters.PARAMETERS[MarketRegime.SIDEWAYS]
+        ).copy()
 
     def adjust_parameters_for_regime(
-        self,
-        base_params: Dict,
-        regime: MarketRegime = None
+        self, base_params: Dict, regime: MarketRegime = None
     ) -> Dict:
         """
         Adjust base parameters based on current market regime.
@@ -333,16 +323,24 @@ class MarketRegimeDetector:
 
         # Apply regime multipliers
         if "position_size" in base_params:
-            adjusted["position_size"] = base_params["position_size"] * regime_params["position_size_multiplier"]
+            adjusted["position_size"] = (
+                base_params["position_size"] * regime_params["position_size_multiplier"]
+            )
 
         if "stop_loss" in base_params:
-            adjusted["stop_loss"] = base_params["stop_loss"] * regime_params["stop_loss_multiplier"]
+            adjusted["stop_loss"] = (
+                base_params["stop_loss"] * regime_params["stop_loss_multiplier"]
+            )
 
         if "take_profit" in base_params:
-            adjusted["take_profit"] = base_params["take_profit"] * regime_params["take_profit_multiplier"]
+            adjusted["take_profit"] = (
+                base_params["take_profit"] * regime_params["take_profit_multiplier"]
+            )
 
         if "trail_stop" in base_params:
-            adjusted["trail_stop"] = base_params["trail_stop"] * regime_params["trail_stop_multiplier"]
+            adjusted["trail_stop"] = (
+                base_params["trail_stop"] * regime_params["trail_stop_multiplier"]
+            )
 
         # Add regime-specific parameters
         adjusted["fear_entry_threshold"] = regime_params["entry_threshold"]

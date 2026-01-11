@@ -20,6 +20,7 @@ try:
     import tensorflow as tf  # noqa: F401
     from tensorflow import keras  # noqa: F401
     from tensorflow.keras import layers, callbacks  # noqa: F401
+
     TENSORFLOW_AVAILABLE = True
 except ImportError:
     TENSORFLOW_AVAILABLE = False
@@ -35,6 +36,7 @@ except ImportError:
 
 class ModelType(Enum):
     """Types of advanced ML models."""
+
     LSTM = "lstm"
     GRU = "gru"
     TRANSFORMER = "transformer"
@@ -43,6 +45,7 @@ class ModelType(Enum):
 
 class ModelStatus(Enum):
     """Model training/performance status."""
+
     ENABLED = "enabled"
     DISABLED = "disabled"
     TRAINING = "training"
@@ -53,6 +56,7 @@ class ModelStatus(Enum):
 @dataclass
 class ModelPerformance:
     """Performance metrics for a model."""
+
     model_type: ModelType
     accuracy: float
     precision: float
@@ -145,9 +149,11 @@ class SequenceBuilder:
         X_list = []
         y_list = []
 
-        for i in range(len(data_clean) - self.sequence_length - self.prediction_horizon + 1):
+        for i in range(
+            len(data_clean) - self.sequence_length - self.prediction_horizon + 1
+        ):
             # Input sequence
-            X = data_clean.iloc[i:i + self.sequence_length][feature_cols].values
+            X = data_clean.iloc[i : i + self.sequence_length][feature_cols].values
             X_list.append(X)
 
             # Target (future return)
@@ -179,7 +185,7 @@ class SequenceBuilder:
         y_list = []
 
         for i in range(len(features) - self.sequence_length):
-            X_list.append(features[i:i + self.sequence_length])
+            X_list.append(features[i : i + self.sequence_length])
             y_list.append(targets[i + self.sequence_length])
 
         X = np.array(X_list)
@@ -423,7 +429,9 @@ class TransformerPredictor:
         x = layers.Dense(16, activation="relu")(x)
         outputs = layers.Dense(1, activation="sigmoid")(x)
 
-        model = keras.Model(inputs=inputs, outputs=outputs, name="transformer_predictor")
+        model = keras.Model(
+            inputs=inputs, outputs=outputs, name="transformer_predictor"
+        )
 
         model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=0.0001),
@@ -597,9 +605,7 @@ class AdvancedMLManager:
             performance_threshold: Minimum score to enable model
             auto_disable: Auto-disable models below threshold
         """
-        self.models_dir = models_dir or os.path.join(
-            PROJECT_ROOT, "models", "advanced"
-        )
+        self.models_dir = models_dir or os.path.join(PROJECT_ROOT, "models", "advanced")
         os.makedirs(self.models_dir, exist_ok=True)
 
         self.performance_threshold = performance_threshold
@@ -637,7 +643,7 @@ class AdvancedMLManager:
         performances = [
             {
                 **asdict(p),
-                "model_type": p.model_type.value  # Convert enum to string
+                "model_type": p.model_type.value,  # Convert enum to string
             }
             for p in self.performances.values()
         ]
@@ -764,7 +770,12 @@ class AdvancedMLManager:
         y_pred: np.ndarray,
     ) -> ModelPerformance:
         """Calculate model performance metrics."""
-        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+        from sklearn.metrics import (
+            accuracy_score,
+            precision_score,
+            recall_score,
+            f1_score,
+        )
 
         accuracy = accuracy_score(y_true, y_pred)
         precision = precision_score(y_true, y_pred, zero_division=0)
@@ -804,8 +815,7 @@ class AdvancedMLManager:
         """
         # Filter enabled models
         enabled_models = {
-            mt: m for mt, m in self.models.items()
-            if self.is_model_enabled(mt)
+            mt: m for mt, m in self.models.items() if self.is_model_enabled(mt)
         }
 
         if not enabled_models:
@@ -815,11 +825,22 @@ class AdvancedMLManager:
         # Find best performing model
         best_model_type = max(
             enabled_models.keys(),
-            key=lambda mt: self.performances.get(mt, ModelPerformance(
-                model_type=mt, accuracy=0, precision=0, recall=0, f1_score=0,
-                sharpe_ratio=0, max_drawdown=0, total_return=0, win_rate=0,
-                sample_count=0, last_updated=datetime.now().isoformat()
-            )).overall_score
+            key=lambda mt: self.performances.get(
+                mt,
+                ModelPerformance(
+                    model_type=mt,
+                    accuracy=0,
+                    precision=0,
+                    recall=0,
+                    f1_score=0,
+                    sharpe_ratio=0,
+                    max_drawdown=0,
+                    total_return=0,
+                    win_rate=0,
+                    sample_count=0,
+                    last_updated=datetime.now().isoformat(),
+                ),
+            ).overall_score,
         )
 
         best_model = enabled_models[best_model_type]
@@ -847,7 +868,9 @@ class AdvancedMLManager:
             return report
 
         for model_type, performance in self.performances.items():
-            enabled = "✅ ENABLED" if self.is_model_enabled(model_type) else "❌ DISABLED"
+            enabled = (
+                "✅ ENABLED" if self.is_model_enabled(model_type) else "❌ DISABLED"
+            )
             report += f"{model_type.value.upper()}: {enabled}\n"
             report += f"  Overall Score: {performance.overall_score:.1f}/100\n"
             report += f"  Accuracy: {performance.accuracy:.2%}\n"
@@ -888,8 +911,7 @@ def is_advanced_ml_enabled(model_type: ModelType = None) -> bool:
         return manager.is_model_enabled(model_type)
 
     return any(
-        manager.is_model_enabled(mt)
-        for mt in [ModelType.LSTM, ModelType.TRANSFORMER]
+        manager.is_model_enabled(mt) for mt in [ModelType.LSTM, ModelType.TRANSFORMER]
     )
 
 

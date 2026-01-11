@@ -22,7 +22,7 @@ class EmailNotifier:
         smtp_port: int = 587,
         sender_email: str = None,
         sender_password: str = None,
-        enabled: bool = True
+        enabled: bool = True,
     ):
         """
         Args:
@@ -68,6 +68,7 @@ class EmailNotifier:
         if os.path.exists(self.notification_log_file):
             try:
                 import json
+
                 with open(self.notification_log_file) as f:
                     return json.load(f)
             except Exception:
@@ -77,17 +78,13 @@ class EmailNotifier:
     def _save_notification_log(self):
         """Save notification history."""
         import json
+
         # Keep only last 100 notifications
         log = self.notification_log[-100:]
         with open(self.notification_log_file, "w") as f:
             json.dump(log, f, indent=2)
 
-    def _send_email(
-        self,
-        subject: str,
-        body: str,
-        html_body: str = None
-    ) -> bool:
+    def _send_email(self, subject: str, body: str, html_body: str = None) -> bool:
         """
         Send email via SMTP.
 
@@ -131,21 +128,18 @@ class EmailNotifier:
 
     def _log_notification(self, notification_type: str, data: dict):
         """Log notification to history."""
-        self.notification_log.append({
-            "timestamp": datetime.now().isoformat(),
-            "type": notification_type,
-            "data": data,
-            "recipients": self.recipients,
-        })
+        self.notification_log.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "type": notification_type,
+                "data": data,
+                "recipients": self.recipients,
+            }
+        )
         self._save_notification_log()
 
     def send_trade_alert(
-        self,
-        symbol: str,
-        action: str,
-        qty: float,
-        price: float,
-        reason: str = None
+        self, symbol: str, action: str, qty: float, price: float, reason: str = None
     ) -> bool:
         """
         Send trade execution alert.
@@ -212,23 +206,22 @@ This is an automated message from your trading system.
 
         success = self._send_email(subject, body, html_body)
 
-        self._log_notification("trade_alert", {
-            "symbol": symbol,
-            "action": action,
-            "qty": qty,
-            "price": price,
-            "reason": reason,
-            "sent": success,
-        })
+        self._log_notification(
+            "trade_alert",
+            {
+                "symbol": symbol,
+                "action": action,
+                "qty": qty,
+                "price": price,
+                "reason": reason,
+                "sent": success,
+            },
+        )
 
         return success
 
     def send_signal_alert(
-        self,
-        symbol: str,
-        signal: str,
-        price: float,
-        indicators: dict = None
+        self, symbol: str, signal: str, price: float, indicators: dict = None
     ) -> bool:
         """
         Send trading signal alert.
@@ -262,21 +255,21 @@ Price: ${price:.2f}
 
         success = self._send_email(subject, body)
 
-        self._log_notification("signal_alert", {
-            "symbol": symbol,
-            "signal": signal,
-            "price": price,
-            "indicators": indicators,
-            "sent": success,
-        })
+        self._log_notification(
+            "signal_alert",
+            {
+                "symbol": symbol,
+                "signal": signal,
+                "price": price,
+                "indicators": indicators,
+                "sent": success,
+            },
+        )
 
         return success
 
     def send_risk_alert(
-        self,
-        alert_type: str,
-        message: str,
-        details: dict = None
+        self, alert_type: str, message: str, details: dict = None
     ) -> bool:
         """
         Send risk management alert.
@@ -307,19 +300,19 @@ Message: {message}
 
         success = self._send_email(subject, body)
 
-        self._log_notification("risk_alert", {
-            "type": alert_type,
-            "message": message,
-            "details": details,
-            "sent": success,
-        })
+        self._log_notification(
+            "risk_alert",
+            {
+                "type": alert_type,
+                "message": message,
+                "details": details,
+                "sent": success,
+            },
+        )
 
         return success
 
-    def send_daily_summary(
-        self,
-        summary: dict
-    ) -> bool:
+    def send_daily_summary(self, summary: dict) -> bool:
         """
         Send daily trading summary.
 
@@ -351,18 +344,18 @@ Final Equity: ${summary.get("final_equity", 0):,.2f}
 
         success = self._send_email(subject, body)
 
-        self._log_notification("daily_summary", {
-            "summary": summary,
-            "sent": success,
-        })
+        self._log_notification(
+            "daily_summary",
+            {
+                "summary": summary,
+                "sent": success,
+            },
+        )
 
         return success
 
     def send_error_alert(
-        self,
-        error_type: str,
-        error_message: str,
-        context: dict = None
+        self, error_type: str, error_message: str, context: dict = None
     ) -> bool:
         """
         Send error alert.
@@ -393,12 +386,15 @@ Message: {error_message}
 
         success = self._send_email(subject, body)
 
-        self._log_notification("error_alert", {
-            "type": error_type,
-            "message": error_message,
-            "context": context,
-            "sent": success,
-        })
+        self._log_notification(
+            "error_alert",
+            {
+                "type": error_type,
+                "message": error_message,
+                "context": context,
+                "sent": success,
+            },
+        )
 
         return success
 

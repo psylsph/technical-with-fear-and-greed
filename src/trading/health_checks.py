@@ -14,6 +14,7 @@ from ..config import PROJECT_ROOT
 
 class HealthStatus(Enum):
     """System health status levels."""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
@@ -25,10 +26,10 @@ class APILatencyMonitor:
 
     def __init__(
         self,
-        warning_threshold_ms: int = 1000,     # 1 second
-        critical_threshold_ms: int = 3000,    # 3 seconds
-        window_size: int = 50,                # Number of requests to track
-        degradation_pct: float = 0.5,         # 50% slower than baseline
+        warning_threshold_ms: int = 1000,  # 1 second
+        critical_threshold_ms: int = 3000,  # 3 seconds
+        window_size: int = 50,  # Number of requests to track
+        degradation_pct: float = 0.5,  # 50% slower than baseline
     ):
         """
         Args:
@@ -56,7 +57,8 @@ class APILatencyMonitor:
                     # Clean old entries (older than 1 hour)
                     cutoff = datetime.now() - timedelta(hours=1)
                     return [
-                        entry for entry in data
+                        entry
+                        for entry in data
                         if datetime.fromisoformat(entry["timestamp"]) > cutoff
                     ]
             except Exception:
@@ -76,17 +78,13 @@ class APILatencyMonitor:
             return 500.0  # Default baseline 500ms
 
         # Use median of recent requests as baseline
-        recent = self.latency_history[-min(50, len(self.latency_history)):]
+        recent = self.latency_history[-min(50, len(self.latency_history)) :]
         latencies = [entry["latency_ms"] for entry in recent]
         latencies.sort()
         return latencies[len(latencies) // 2] if latencies else 500.0
 
     def record_api_call(
-        self,
-        endpoint: str,
-        latency_ms: float,
-        success: bool,
-        status_code: int = None
+        self, endpoint: str, latency_ms: float, success: bool, status_code: int = None
     ) -> Dict:
         """
         Record an API call and check for issues.
@@ -116,12 +114,7 @@ class APILatencyMonitor:
         # Analyze health
         return self._analyze_health(endpoint, latency_ms, success)
 
-    def _analyze_health(
-        self,
-        endpoint: str,
-        latency_ms: float,
-        success: bool
-    ) -> Dict:
+    def _analyze_health(self, endpoint: str, latency_ms: float, success: bool) -> Dict:
         """Analyze the health status of an API call."""
         status = HealthStatus.HEALTHY
         alerts = []
@@ -176,7 +169,9 @@ class APILatencyMonitor:
             }
 
         # Get recent requests
-        recent = self.latency_history[-min(self.window_size, len(self.latency_history)):]
+        recent = self.latency_history[
+            -min(self.window_size, len(self.latency_history)) :
+        ]
         total_requests = len(recent)
 
         # Calculate stats
@@ -230,10 +225,7 @@ class APILatencyMonitor:
 
     def get_endpoint_stats(self, endpoint: str) -> Dict:
         """Get statistics for a specific endpoint."""
-        endpoint_calls = [
-            r for r in self.latency_history
-            if r["endpoint"] == endpoint
-        ]
+        endpoint_calls = [r for r in self.latency_history if r["endpoint"] == endpoint]
 
         if not endpoint_calls:
             return {
@@ -242,7 +234,7 @@ class APILatencyMonitor:
                 "message": "No data for this endpoint",
             }
 
-        recent = endpoint_calls[-min(self.window_size, len(endpoint_calls)):]
+        recent = endpoint_calls[-min(self.window_size, len(endpoint_calls)) :]
         latencies = [r["latency_ms"] for r in recent]
         success_rate = sum(1 for r in recent if r["success"]) / len(recent)
 
@@ -320,11 +312,7 @@ class SystemHealthChecker:
             json.dump(self.health_history, f, indent=2)
 
     def check_api_health(
-        self,
-        endpoint: str,
-        latency_ms: float,
-        success: bool,
-        status_code: int = None
+        self, endpoint: str, latency_ms: float, success: bool, status_code: int = None
     ) -> Tuple[bool, List[str]]:
         """
         Check API health after a call.
@@ -346,12 +334,14 @@ class SystemHealthChecker:
         )
 
         # Record to health history
-        self.health_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "status": result["status"],
-            "endpoint": endpoint,
-            "latency_ms": latency_ms,
-        })
+        self.health_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "status": result["status"],
+                "endpoint": endpoint,
+                "latency_ms": latency_ms,
+            }
+        )
         self._save_health_history()
 
         is_healthy = result["status"] in [
@@ -405,7 +395,10 @@ class SystemHealthChecker:
 
         # Pause if critical status
         if api_health["status"] == HealthStatus.CRITICAL.value:
-            return True, f"Critical API health: {', '.join(api_health.get('issues', []))}"
+            return (
+                True,
+                f"Critical API health: {', '.join(api_health.get('issues', []))}",
+            )
 
         # Pause if success rate too low
         if api_health["success_rate"] < 0.90:

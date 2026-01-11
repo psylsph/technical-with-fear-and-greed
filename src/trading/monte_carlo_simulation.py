@@ -14,6 +14,7 @@ import numpy as np
 
 class ConfidenceLevel(Enum):
     """Confidence levels for risk analysis."""
+
     P90 = 0.90
     P95 = 0.95
     P99 = 0.99
@@ -22,6 +23,7 @@ class ConfidenceLevel(Enum):
 @dataclass
 class SimulationResult:
     """Result of a single Monte Carlo simulation run."""
+
     final_equity: float
     total_return: float
     max_drawdown: float
@@ -65,9 +67,7 @@ class MonteCarloSimulator:
             np.random.seed(random_seed)
 
     def bootstrap_returns(
-        self,
-        returns: pd.Series,
-        sample_size: int = None
+        self, returns: pd.Series, sample_size: int = None
     ) -> pd.Series:
         """
         Bootstrap a returns series by sampling with replacement.
@@ -84,10 +84,7 @@ class MonteCarloSimulator:
 
         return returns.sample(n=sample_size, replace=True).reset_index(drop=True)
 
-    def permute_returns(
-        self,
-        returns: pd.Series
-    ) -> pd.Series:
+    def permute_returns(self, returns: pd.Series) -> pd.Series:
         """
         Randomly permute the order of returns.
 
@@ -100,9 +97,7 @@ class MonteCarloSimulator:
         return returns.sample(frac=1).reset_index(drop=True)
 
     def simulate_single_path(
-        self,
-        returns: pd.Series,
-        method: str = "bootstrap"
+        self, returns: pd.Series, method: str = "bootstrap"
     ) -> SimulationResult:
         """
         Simulate a single path using specified method.
@@ -141,7 +136,9 @@ class MonteCarloSimulator:
             sharpe_ratio = 0.0
 
         # Win rate
-        win_rate = (sim_returns > 0).sum() / len(sim_returns) if len(sim_returns) > 0 else 0.0
+        win_rate = (
+            (sim_returns > 0).sum() / len(sim_returns) if len(sim_returns) > 0 else 0.0
+        )
 
         # Number of trades (roughly number of non-zero returns)
         total_trades = (sim_returns != 0).sum()
@@ -156,9 +153,7 @@ class MonteCarloSimulator:
         )
 
     def run_simulation(
-        self,
-        returns: pd.Series,
-        method: str = "bootstrap"
+        self, returns: pd.Series, method: str = "bootstrap"
     ) -> Tuple[List[SimulationResult], Dict]:
         """
         Run full Monte Carlo simulation.
@@ -241,10 +236,7 @@ class MonteCarloSimulator:
             "num_simulations": len(results),
         }
 
-    def calculate_probability_of_profit(
-        self,
-        results: List[SimulationResult]
-    ) -> Dict:
+    def calculate_probability_of_profit(self, results: List[SimulationResult]) -> Dict:
         """
         Calculate probability of achieving different profit levels.
 
@@ -257,19 +249,31 @@ class MonteCarloSimulator:
         returns = [r.total_return for r in results]
 
         return {
-            "prob_profit": sum(1 for r in returns if r > 0) / len(returns) if returns else 0.0,
-            "prob_5pct_gain": sum(1 for r in returns if r > 0.05) / len(returns) if returns else 0.0,
-            "prob_10pct_gain": sum(1 for r in returns if r > 0.10) / len(returns) if returns else 0.0,
-            "prob_20pct_gain": sum(1 for r in returns if r > 0.20) / len(returns) if returns else 0.0,
-            "prob_5pct_loss": sum(1 for r in returns if r < -0.05) / len(returns) if returns else 0.0,
-            "prob_10pct_loss": sum(1 for r in returns if r < -0.10) / len(returns) if returns else 0.0,
-            "prob_20pct_loss": sum(1 for r in returns if r < -0.20) / len(returns) if returns else 0.0,
+            "prob_profit": sum(1 for r in returns if r > 0) / len(returns)
+            if returns
+            else 0.0,
+            "prob_5pct_gain": sum(1 for r in returns if r > 0.05) / len(returns)
+            if returns
+            else 0.0,
+            "prob_10pct_gain": sum(1 for r in returns if r > 0.10) / len(returns)
+            if returns
+            else 0.0,
+            "prob_20pct_gain": sum(1 for r in returns if r > 0.20) / len(returns)
+            if returns
+            else 0.0,
+            "prob_5pct_loss": sum(1 for r in returns if r < -0.05) / len(returns)
+            if returns
+            else 0.0,
+            "prob_10pct_loss": sum(1 for r in returns if r < -0.10) / len(returns)
+            if returns
+            else 0.0,
+            "prob_20pct_loss": sum(1 for r in returns if r < -0.20) / len(returns)
+            if returns
+            else 0.0,
         }
 
     def get_worst_case_scenarios(
-        self,
-        results: List[SimulationResult],
-        n: int = 10
+        self, results: List[SimulationResult], n: int = 10
     ) -> List[SimulationResult]:
         """
         Get the n worst performing scenarios.
@@ -284,9 +288,7 @@ class MonteCarloSimulator:
         return sorted(results, key=lambda r: r.total_return)[:n]
 
     def get_best_case_scenarios(
-        self,
-        results: List[SimulationResult],
-        n: int = 10
+        self, results: List[SimulationResult], n: int = 10
     ) -> List[SimulationResult]:
         """
         Get the n best performing scenarios.
@@ -304,7 +306,7 @@ class MonteCarloSimulator:
         self,
         results: List[SimulationResult],
         statistics: Dict,
-        method: str = "bootstrap"
+        method: str = "bootstrap",
     ) -> str:
         """
         Generate human-readable Monte Carlo simulation report.
@@ -407,7 +409,7 @@ def run_monte_carlo(
     num_simulations: int = 1000,
     initial_capital: float = 10000.0,
     method: str = "bootstrap",
-    random_seed: int = 42
+    random_seed: int = 42,
 ) -> Tuple[List[SimulationResult], str]:
     """
     Convenience function to run Monte Carlo simulation.

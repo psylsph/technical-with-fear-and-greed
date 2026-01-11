@@ -40,7 +40,10 @@ class TrendFilter:
         if signal == "buy":
             if current_price < current_sma:
                 diff_pct = ((current_price - current_sma) / current_sma) * 100
-                return False, f"Trend filter: Price ${current_price:.2f} below {self.trend_period}-day SMA ${current_sma:.2f} ({diff_pct:.2f}%)"
+                return (
+                    False,
+                    f"Trend filter: Price ${current_price:.2f} below {self.trend_period}-day SMA ${current_sma:.2f} ({diff_pct:.2f}%)",
+                )
 
         elif signal == "sell":
             # Allow sells regardless of trend (take profits)
@@ -85,7 +88,10 @@ class VolumeFilter:
             required_volume = avg_volume.iloc[-1] * self.volume_multiplier
             if current_volume < required_volume:
                 vol_ratio = current_volume / avg_volume.iloc[-1]
-                return False, f"Volume filter: Current volume {current_volume:,.0f} below {self.volume_multiplier}x average ({vol_ratio:.2f}x)"
+                return (
+                    False,
+                    f"Volume filter: Current volume {current_volume:,.0f} below {self.volume_multiplier}x average ({vol_ratio:.2f}x)",
+                )
 
         # Sells can happen regardless of volume (take profits)
         return True, None
@@ -102,7 +108,9 @@ class SignalFilters:
             "volume": True,
         }
 
-    def check_all(self, close: pd.Series, volume: pd.Series, signal: str) -> Tuple[bool, list]:
+    def check_all(
+        self, close: pd.Series, volume: pd.Series, signal: str
+    ) -> Tuple[bool, list]:
         """
         Check all enabled filters.
 

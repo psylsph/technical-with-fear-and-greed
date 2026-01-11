@@ -22,6 +22,7 @@ from ..config import PROJECT_ROOT
 
 class CacheStrategy(Enum):
     """Cache refresh strategies."""
+
     TTL = "ttl"  # Time-based expiration
     ADAPTIVE = "adaptive"  # Adaptive based on usage patterns
     LAZY = "lazy"  # Refresh on access if expired
@@ -30,6 +31,7 @@ class CacheStrategy(Enum):
 
 class CacheHitRate(Enum):
     """Cache performance categories."""
+
     EXCELLENT = "excellent"  # > 90% hit rate
     GOOD = "good"  # > 70% hit rate
     FAIR = "fair"  # > 50% hit rate
@@ -39,6 +41,7 @@ class CacheHitRate(Enum):
 @dataclass
 class CacheEntry:
     """A single cache entry."""
+
     key: str
     value: Any
     timestamp: float
@@ -64,6 +67,7 @@ class CacheEntry:
 @dataclass
 class CacheStats:
     """Cache performance statistics."""
+
     total_requests: int
     cache_hits: int
     cache_misses: int
@@ -184,10 +188,7 @@ class TTLCache:
 
         with self._lock:
             # Sort by last access time
-            sorted_entries = sorted(
-                self._cache.items(),
-                key=lambda x: x[1].last_access
-            )
+            sorted_entries = sorted(self._cache.items(), key=lambda x: x[1].last_access)
 
             for key, entry in sorted_entries:
                 if freed_space >= required_space:
@@ -282,8 +283,8 @@ class TTLCache:
 
             # Check size limits
             would_exceed = (
-                self._stats.total_size_bytes + size_bytes > self.max_size_bytes or
-                len(self._cache) >= self.max_entries
+                self._stats.total_size_bytes + size_bytes > self.max_size_bytes
+                or len(self._cache) >= self.max_entries
             )
 
             if would_exceed:
@@ -549,11 +550,16 @@ class IntelligentCacheManager:
             if data is not None and not data.empty:
                 # Cache with adaptive TTL based on timeframe
                 ttl = self._get_timeframe_ttl(timeframe)
-                self.cache.set(cache_key, data, ttl=ttl, metadata={
-                    "symbol": symbol,
-                    "timeframe": timeframe,
-                    "limit": limit,
-                })
+                self.cache.set(
+                    cache_key,
+                    data,
+                    ttl=ttl,
+                    metadata={
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "limit": limit,
+                    },
+                )
 
             return data
 
@@ -610,9 +616,7 @@ class IntelligentCacheManager:
         entries_info = self.cache.get_entries_info()
         if entries_info:
             top_entries = sorted(
-                entries_info,
-                key=lambda x: x["access_count"],
-                reverse=True
+                entries_info, key=lambda x: x["access_count"], reverse=True
             )[:5]
 
             report += "Top 5 Entries by Access:\n"

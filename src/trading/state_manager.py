@@ -17,8 +17,7 @@ import fcntl
 import tempfile
 import shutil
 from abc import ABC, abstractmethod
-from collections import defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Generic
@@ -28,6 +27,7 @@ import hashlib
 
 class StateEventType(Enum):
     """Types of state events."""
+
     CREATED = "created"
     UPDATED = "updated"
     DELETED = "deleted"
@@ -39,6 +39,7 @@ class StateEventType(Enum):
 @dataclass
 class StateEvent:
     """State change event."""
+
     event_type: StateEventType
     key: str
     old_value: Any = None
@@ -80,6 +81,7 @@ class StateStore(ABC, Generic[T]):
 @dataclass
 class StateSnapshot:
     """Snapshot of state at a point in time."""
+
     timestamp: datetime
     data: Dict[str, Any]
     version: int
@@ -108,7 +110,9 @@ class InMemoryStateStore(StateStore[Any]):
             # Emit event
             self._emit_event(
                 StateEvent(
-                    event_type=StateEventType.UPDATED if old_value is not None else StateEventType.CREATED,
+                    event_type=StateEventType.UPDATED
+                    if old_value is not None
+                    else StateEventType.CREATED,
                     key=key,
                     old_value=old_value,
                     new_value=value,
@@ -166,9 +170,7 @@ class InMemoryStateStore(StateStore[Any]):
         """Import state from dictionary."""
         with self._lock:
             self._data = dict(data)
-            self._emit_event(
-                StateEvent(event_type=StateEventType.LOADED, key="*")
-            )
+            self._emit_event(StateEvent(event_type=StateEventType.LOADED, key="*"))
 
 
 class PersistentStateStore(InMemoryStateStore):
@@ -275,7 +277,7 @@ class PersistentStateStore(InMemoryStateStore):
                 )
             )
 
-        except Exception as e:
+        except Exception:
             # Clean up temp file on error
             try:
                 os.unlink(tmp_path)
@@ -304,7 +306,9 @@ class PersistentStateStore(InMemoryStateStore):
                 calculated_checksum = hashlib.sha256(data_str.encode()).hexdigest()
 
                 if stored_checksum != calculated_checksum:
-                    raise ValueError("State file checksum mismatch - data may be corrupted")
+                    raise ValueError(
+                        "State file checksum mismatch - data may be corrupted"
+                    )
 
             self._version = data.get("version", 0)
             self.from_dict(data.get("data", {}))

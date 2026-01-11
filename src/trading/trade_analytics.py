@@ -18,6 +18,7 @@ from ..config import PROJECT_ROOT
 
 class TradeQuality(Enum):
     """Trade quality classifications."""
+
     EXCELLENT = "excellent"
     GOOD = "good"
     FAIR = "fair"
@@ -26,6 +27,7 @@ class TradeQuality(Enum):
 
 class ExitReason(Enum):
     """Reasons for trade exit."""
+
     TAKE_PROFIT = "take_profit"
     STOP_LOSS = "stop_loss"
     TRAILING_STOP = "trailing_stop"
@@ -40,6 +42,7 @@ class ExitReason(Enum):
 @dataclass
 class Trade:
     """Represents a single completed trade."""
+
     symbol: str
     side: str  # "long" or "short"
     entry_price: float
@@ -56,7 +59,9 @@ class Trade:
     hold_duration_hours: float
     exit_reason: str
     quality: str
-    max_favorable_adverse_move: float  # Max favorable move (profit), max adverse move (loss)
+    max_favorable_adverse_move: (
+        float  # Max favorable move (profit), max adverse move (loss)
+    )
     max_drawdown_during_trade: float
 
 
@@ -265,7 +270,9 @@ class TradeAnalyzer:
 
         # Favorable move capture score (20% weight)
         if max_favorable > 0:
-            capture_ratio = net_profit_pct / ((max_favorable / max_favorable if max_favorable > 0 else 1) * 100)
+            capture_ratio = net_profit_pct / (
+                (max_favorable / max_favorable if max_favorable > 0 else 1) * 100
+            )
             if capture_ratio > 0.8:
                 score += 0.2
             elif capture_ratio > 0.5:
@@ -333,8 +340,7 @@ class TradeAnalyzer:
         # Filter trades by date
         cutoff = datetime.now() - timedelta(days=days)
         recent_trades = [
-            t for t in self.trades
-            if datetime.fromisoformat(t.exit_time) > cutoff
+            t for t in self.trades if datetime.fromisoformat(t.exit_time) > cutoff
         ]
 
         if not recent_trades:
@@ -347,12 +353,10 @@ class TradeAnalyzer:
         win_rate = len(winning_trades) / total_trades if total_trades > 0 else 0
 
         avg_profit_pct = (
-            np.mean([t.net_profit_pct for t in winning_trades])
-            if winning_trades else 0
+            np.mean([t.net_profit_pct for t in winning_trades]) if winning_trades else 0
         )
         avg_loss_pct = (
-            np.mean([t.net_profit_pct for t in losing_trades])
-            if losing_trades else 0
+            np.mean([t.net_profit_pct for t in losing_trades]) if losing_trades else 0
         )
 
         gross_profit = sum(t.gross_profit for t in winning_trades)
@@ -361,11 +365,16 @@ class TradeAnalyzer:
 
         avg_hold_hours = (
             np.mean([t.hold_duration_hours for t in recent_trades])
-            if recent_trades else 0
+            if recent_trades
+            else 0
         )
 
-        max_profit = max([t.net_profit_pct for t in recent_trades]) if recent_trades else 0
-        max_loss = min([t.net_profit_pct for t in recent_trades]) if recent_trades else 0
+        max_profit = (
+            max([t.net_profit_pct for t in recent_trades]) if recent_trades else 0
+        )
+        max_loss = (
+            min([t.net_profit_pct for t in recent_trades]) if recent_trades else 0
+        )
 
         return {
             "period_days": days,
@@ -395,16 +404,12 @@ class TradeAnalyzer:
         """
         cutoff = datetime.now() - timedelta(days=days)
         recent_trades = [
-            t for t in self.trades
-            if datetime.fromisoformat(t.exit_time) > cutoff
+            t for t in self.trades if datetime.fromisoformat(t.exit_time) > cutoff
         ]
 
         metrics_by_reason = {}
         for reason in ExitReason:
-            reason_trades = [
-                t for t in recent_trades
-                if t.exit_reason == reason.value
-            ]
+            reason_trades = [t for t in recent_trades if t.exit_reason == reason.value]
 
             if reason_trades:
                 winning = [t for t in reason_trades if t.net_profit > 0]
@@ -412,7 +417,8 @@ class TradeAnalyzer:
 
                 avg_profit = (
                     np.mean([t.net_profit_pct for t in reason_trades])
-                    if reason_trades else 0
+                    if reason_trades
+                    else 0
                 )
 
                 metrics_by_reason[reason.value] = {
@@ -424,9 +430,7 @@ class TradeAnalyzer:
 
         return metrics_by_reason
 
-    def get_metrics_by_time_period(
-        self, days: int = 30
-    ) -> Dict:
+    def get_metrics_by_time_period(self, days: int = 30) -> Dict:
         """
         Analyze performance by time period (hour of day, day of week).
 
@@ -438,22 +442,23 @@ class TradeAnalyzer:
         """
         cutoff = datetime.now() - timedelta(days=days)
         recent_trades = [
-            t for t in self.trades
-            if datetime.fromisoformat(t.exit_time) > cutoff
+            t for t in self.trades if datetime.fromisoformat(t.exit_time) > cutoff
         ]
 
         # By hour of day
         by_hour = {}
         for hour in range(24):
             hour_trades = [
-                t for t in recent_trades
+                t
+                for t in recent_trades
                 if datetime.fromisoformat(t.exit_time).hour == hour
             ]
             if hour_trades:
                 by_hour[hour] = {
                     "count": len(hour_trades),
                     "win_rate": (
-                        sum(1 for t in hour_trades if t.net_profit > 0) / len(hour_trades)
+                        sum(1 for t in hour_trades if t.net_profit > 0)
+                        / len(hour_trades)
                     ),
                     "avg_profit_pct": np.mean([t.net_profit_pct for t in hour_trades]),
                 }
@@ -463,7 +468,8 @@ class TradeAnalyzer:
         days_map = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         for i, day in enumerate(days_map):
             day_trades = [
-                t for t in recent_trades
+                t
+                for t in recent_trades
                 if datetime.fromisoformat(t.exit_time).weekday() == i
             ]
             if day_trades:
@@ -535,16 +541,16 @@ class TradeAnalyzer:
                 "fair": "🟠",
                 "poor": "🔴",
             }.get(quality, "•")
-            report += f"  {emoji} {quality.title()}: {data['count']} ({data['pct']:.1%})\n"
+            report += (
+                f"  {emoji} {quality.title()}: {data['count']} ({data['pct']:.1%})\n"
+            )
         report += "\n"
 
         # By exit reason
         if by_reason:
             report += "Performance by Exit Reason:\n"
             for reason, data in sorted(
-                by_reason.items(),
-                key=lambda x: x[1]["count"],
-                reverse=True
+                by_reason.items(), key=lambda x: x[1]["count"], reverse=True
             ):
                 report += (
                     f"  {reason}: {data['count']} trades, "
@@ -558,7 +564,7 @@ class TradeAnalyzer:
             sorted_hours = sorted(
                 by_time["by_hour"].items(),
                 key=lambda x: x[1]["avg_profit_pct"],
-                reverse=True
+                reverse=True,
             )
             best_hour = sorted_hours[0]
             worst_hour = sorted_hours[-1]
@@ -590,10 +596,7 @@ class TradeAnalyzer:
         return output_file
 
 
-def analyze_trade_log(
-    trade_log_file: str = None,
-    days: int = 30
-) -> str:
+def analyze_trade_log(trade_log_file: str = None, days: int = 30) -> str:
     """
     Convenience function to analyze trade log and generate report.
 

@@ -14,6 +14,7 @@ import numpy as np
 
 class PropertyType(Enum):
     """Types of properties to test."""
+
     RETURNS_ALWAYS_DEFINED = "returns_always_defined"
     RETURNS_FINITE = "returns_finite"
     POSITION_SIZES_LIMITED = "position_sizes_limited"
@@ -27,6 +28,7 @@ class PropertyType(Enum):
 @dataclass
 class PropertyTestResult:
     """Result of a property test."""
+
     property_name: PropertyType
     passed: bool
     num_tests: int
@@ -50,10 +52,10 @@ class PropertyTester:
 
     def __init__(
         self,
-        max_position_size: float = 1.0,      # Max position size
-        max_leverage: float = 2.0,            # Max leverage
-        max_single_return: float = 0.50,      # Max single day return (50%)
-        max_drawdown: float = 0.5,            # Max drawdown (50%)
+        max_position_size: float = 1.0,  # Max position size
+        max_leverage: float = 2.0,  # Max leverage
+        max_single_return: float = 0.50,  # Max single day return (50%)
+        max_drawdown: float = 0.5,  # Max drawdown (50%)
         num_random_tests: int = 100,
     ):
         """
@@ -136,10 +138,12 @@ class PropertyTester:
 
             if returns.isna().any():
                 num_fails += 1
-                fail_examples.append({
-                    "prices": prices.head(5).tolist(),
-                    "nan_count": returns.isna().sum(),
-                })
+                fail_examples.append(
+                    {
+                        "prices": prices.head(5).tolist(),
+                        "nan_count": returns.isna().sum(),
+                    }
+                )
 
         return PropertyTestResult(
             property_name=PropertyType.RETURNS_ALWAYS_DEFINED,
@@ -173,9 +177,11 @@ class PropertyTester:
             if not np.isfinite(returns).all():
                 num_fails += 1
                 infinite_indices = np.where(~np.isfinite(returns))[0]
-                fail_examples.append({
-                    "infinite_indices": infinite_indices.tolist()[:5],
-                })
+                fail_examples.append(
+                    {
+                        "infinite_indices": infinite_indices.tolist()[:5],
+                    }
+                )
 
         return PropertyTestResult(
             property_name=PropertyType.RETURNS_FINITE,
@@ -210,10 +216,12 @@ class PropertyTester:
             if (positions.abs() > self.max_position_size).any():
                 num_fails += 1
                 exceed_indices = np.where(positions.abs() > self.max_position_size)[0]
-                fail_examples.append({
-                    "max_position": positions.abs().max(),
-                    "exceed_indices": exceed_indices.tolist()[:3],
-                })
+                fail_examples.append(
+                    {
+                        "max_position": positions.abs().max(),
+                        "exceed_indices": exceed_indices.tolist()[:3],
+                    }
+                )
 
         return PropertyTestResult(
             property_name=PropertyType.POSITION_SIZES_LIMITED,
@@ -254,10 +262,12 @@ class PropertyTester:
 
             if max_dd > self.max_drawdown:
                 num_fails += 1
-                fail_examples.append({
-                    "max_drawdown": max_dd,
-                    "allowed_max": self.max_drawdown,
-                })
+                fail_examples.append(
+                    {
+                        "max_drawdown": max_dd,
+                        "allowed_max": self.max_drawdown,
+                    }
+                )
 
         return PropertyTestResult(
             property_name=PropertyType.DRAWDOWN_LIMITED,
@@ -299,14 +309,18 @@ class PropertyTester:
                 continue
 
             # Calculate notional exposure (sum of absolute positions)
-            notional = positions.abs().sum() if hasattr(positions, 'abs') else abs(positions)
+            notional = (
+                positions.abs().sum() if hasattr(positions, "abs") else abs(positions)
+            )
 
             if notional > self.max_leverage:
                 num_fails += 1
-                fail_examples.append({
-                    "notional": notional,
-                    "max_leverage": self.max_leverage,
-                })
+                fail_examples.append(
+                    {
+                        "notional": notional,
+                        "max_leverage": self.max_leverage,
+                    }
+                )
 
         return PropertyTestResult(
             property_name=PropertyType.NO_OVERLEVERAGE,
@@ -340,10 +354,12 @@ class PropertyTester:
             if signals.isna().any():
                 num_fails += 1
                 nan_indices = np.where(signals.isna())[0]
-                fail_examples.append({
-                    "nan_count": signals.isna().sum(),
-                    "nan_indices": nan_indices.tolist()[:5],
-                })
+                fail_examples.append(
+                    {
+                        "nan_count": signals.isna().sum(),
+                        "nan_indices": nan_indices.tolist()[:5],
+                    }
+                )
 
         return PropertyTestResult(
             property_name=PropertyType.NO_NAN_SIGNALS,
@@ -379,11 +395,13 @@ class PropertyTester:
 
             if len(extreme_returns) > 0:
                 num_fails += 1
-                fail_examples.append({
-                    "extreme_count": len(extreme_returns),
-                    "max_return": returns.abs().max(),
-                    "extreme_values": extreme_returns.abs().tolist()[:3],
-                })
+                fail_examples.append(
+                    {
+                        "extreme_count": len(extreme_returns),
+                        "max_return": returns.abs().max(),
+                        "extreme_values": extreme_returns.abs().tolist()[:3],
+                    }
+                )
 
         return PropertyTestResult(
             property_name=PropertyType.RETURNS_REASONABLE_RANGE,
@@ -446,12 +464,16 @@ class PropertyTester:
         }
 
     def get_property_test_report(
-        self,
-        results: List[PropertyTestResult],
-        summary: Dict
+        self, results: List[PropertyTestResult], summary: Dict
     ) -> str:
         """Generate human-readable property test report."""
-        emoji = "✅" if summary["success_rate"] >= 0.8 else "🟠" if summary["success_rate"] >= 0.5 else "🔴"
+        emoji = (
+            "✅"
+            if summary["success_rate"] >= 0.8
+            else "🟠"
+            if summary["success_rate"] >= 0.5
+            else "🔴"
+        )
 
         report = f"{emoji} Property-Based Test Results\n"
         report += f"{'='*60}\n\n"
@@ -463,7 +485,9 @@ class PropertyTester:
         report += "Property Tests:\n"
         for result in results:
             result_emoji = "✅" if result.passed else "❌"
-            report += f"  {result_emoji} {result.property_name.value}: {result.description}\n"
+            report += (
+                f"  {result_emoji} {result.property_name.value}: {result.description}\n"
+            )
             report += f"      Tests: {result.num_tests}, Fails: {result.num_fails}\n"
 
             if not result.passed and result.fail_examples:

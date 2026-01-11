@@ -10,21 +10,18 @@ Features:
 - Contrarian indicators
 """
 
-import os
-import re
-import json
 import asyncio
 from abc import ABC, abstractmethod
-from collections import defaultdict, deque
+from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
-import hashlib
 
 
 class SentimentSource(Enum):
     """Sources of sentiment data."""
+
     TWITTER = "twitter"
     REDDIT = "reddit"
     NEWS = "news"
@@ -34,6 +31,7 @@ class SentimentSource(Enum):
 
 class SentimentLabel(Enum):
     """Sentiment classification labels."""
+
     EXTREME_FEAR = "extreme_fear"
     FEAR = "fear"
     NEUTRAL = "neutral"
@@ -44,6 +42,7 @@ class SentimentLabel(Enum):
 @dataclass
 class SentimentScore:
     """Individual sentiment score."""
+
     source: SentimentSource
     score: float  # -1 (extremely bearish) to +1 (extremely bullish)
     confidence: float  # 0 to 1
@@ -68,6 +67,7 @@ class SentimentScore:
 @dataclass
 class SentimentTrend:
     """Sentiment trend over time."""
+
     direction: str  # "rising", "falling", "stable"
     momentum: float  # Rate of change
     reversal_potential: float  # 0-1, likelihood of sentiment reversal
@@ -77,6 +77,7 @@ class SentimentTrend:
 @dataclass
 class SentimentAnalysis:
     """Complete sentiment analysis result."""
+
     overall_score: float  # -1 to +1
     overall_label: SentimentLabel
     confidence: float  # 0 to 1
@@ -197,7 +198,10 @@ class FearGreedSentimentAnalyzer(BaseSentimentAnalyzer):
                         timestamp=timestamp,
                         label=label,
                         volume=int(fgi_value),
-                        metadata={"fgi_value": fgi_value, "classification": fgi_data["value_classification"]},
+                        metadata={
+                            "fgi_value": fgi_value,
+                            "classification": fgi_data["value_classification"],
+                        },
                     )
 
                     self.add_to_history(sentiment_score)
@@ -232,23 +236,69 @@ class SocialMediaSentimentAnalyzer(BaseSentimentAnalyzer):
 
     # Bullish keywords
     BULLISH_KEYWORDS = [
-        "moon", "pump", "bull", "buy", "hold", "hodl", "accumulate",
-        "rocket", "to the moon", "diamond hands", "bull run", "rally",
-        "breakout", "surge", "soar", "upward", "gain", "profit", "win",
-        "ath", "all time high", "bullish", "long", "calls", "uptrend",
+        "moon",
+        "pump",
+        "bull",
+        "buy",
+        "hold",
+        "hodl",
+        "accumulate",
+        "rocket",
+        "to the moon",
+        "diamond hands",
+        "bull run",
+        "rally",
+        "breakout",
+        "surge",
+        "soar",
+        "upward",
+        "gain",
+        "profit",
+        "win",
+        "ath",
+        "all time high",
+        "bullish",
+        "long",
+        "calls",
+        "uptrend",
     ]
 
     # Bearish keywords
     BEARISH_KEYWORDS = [
-        "dump", "bear", "sell", "short", "crash", "collapse", "dumping",
-        "bearish", "dip", "correction", "plummet", "fall", "drop", "decline",
-        "loss", "put", "puts", "downtrend", "bear run", "panic", "fear",
-        "scam", "ponzi", "bubble", "burst", "liquidation", "rekt",
+        "dump",
+        "bear",
+        "sell",
+        "short",
+        "crash",
+        "collapse",
+        "dumping",
+        "bearish",
+        "dip",
+        "correction",
+        "plummet",
+        "fall",
+        "drop",
+        "decline",
+        "loss",
+        "put",
+        "puts",
+        "downtrend",
+        "bear run",
+        "panic",
+        "fear",
+        "scam",
+        "ponzi",
+        "bubble",
+        "burst",
+        "liquidation",
+        "rekt",
     ]
 
     def __init__(self, source: SentimentSource):
         super().__init__(source)
-        self._mock_data = True  # Use mock data by default (requires API keys for real data)
+        self._mock_data = (
+            True  # Use mock data by default (requires API keys for real data)
+        )
 
     async def fetch_sentiment(self, symbol: str, hours: int = 24) -> SentimentScore:
         """Fetch social media sentiment."""
@@ -381,7 +431,9 @@ class NewsSentimentAnalyzer(BaseSentimentAnalyzer):
         self.add_to_history(sentiment_score)
         return sentiment_score
 
-    async def _fetch_real_news_sentiment(self, symbol: str, hours: int) -> SentimentScore:
+    async def _fetch_real_news_sentiment(
+        self, symbol: str, hours: int
+    ) -> SentimentScore:
         """Fetch real news sentiment from APIs."""
         # Would integrate with NewsAPI, etc.
         return self._generate_mock_sentiment(symbol)
@@ -393,13 +445,31 @@ class NewsSentimentAnalyzer(BaseSentimentAnalyzer):
         text_lower = text.lower()
 
         positive_words = [
-            "surge", "rally", "gain", "rise", "growth", "expansion",
-            "breakthrough", "adoption", "partnership", "launch", "upgrade",
+            "surge",
+            "rally",
+            "gain",
+            "rise",
+            "growth",
+            "expansion",
+            "breakthrough",
+            "adoption",
+            "partnership",
+            "launch",
+            "upgrade",
         ]
 
         negative_words = [
-            "fall", "drop", "decline", "crash", "loss", "concern",
-            "regulation", "ban", "hack", "security", "lawsuit",
+            "fall",
+            "drop",
+            "decline",
+            "crash",
+            "loss",
+            "concern",
+            "regulation",
+            "ban",
+            "hack",
+            "security",
+            "lawsuit",
         ]
 
         positive_count = sum(1 for word in positive_words if word in text_lower)
@@ -650,7 +720,6 @@ def get_sentiment_score(symbol: str, hours: int = 24) -> float:
     Returns:
         Sentiment score from -1 (extremely bearish) to +1 (extremely bullish)
     """
-    import asyncio
 
     try:
         loop = asyncio.get_event_loop()
@@ -667,7 +736,6 @@ def get_sentiment_score(symbol: str, hours: int = 24) -> float:
 
 def get_sentiment_label(symbol: str, hours: int = 24) -> SentimentLabel:
     """Get sentiment label for a symbol."""
-    import asyncio
 
     try:
         loop = asyncio.get_event_loop()

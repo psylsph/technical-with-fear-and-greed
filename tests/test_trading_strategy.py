@@ -411,9 +411,7 @@ class TestPortfolio(unittest.TestCase):
     def test_simulate_trade_sell_insufficient_eth(self):
         """Test sell trade with insufficient ETH."""
 
-        result = simulate_trade(
-            self.test_state.copy(), "ETH/USD", "sell", 0.01, 3000.0
-        )
+        result = simulate_trade(self.test_state.copy(), "ETH/USD", "sell", 0.01, 3000.0)
 
         # Should not execute trade
         self.assertEqual(result["eth_held"], 0.0)

@@ -13,6 +13,7 @@ import numpy as np
 
 class WalkForwardResult(Enum):
     """Result categories for walk-forward analysis."""
+
     PASS = "pass"
     FAIL = "fail"
     INCONCLUSIVE = "inconclusive"
@@ -21,6 +22,7 @@ class WalkForwardResult(Enum):
 @dataclass
 class WalkForwardWindow:
     """A single walk-forward window."""
+
     train_start: str
     train_end: str
     test_start: str
@@ -49,11 +51,11 @@ class WalkForwardAnalyzer:
 
     def __init__(
         self,
-        train_period_months: int = 6,    # 6 months training data
-        test_period_months: int = 1,     # 1 month test data
-        step_period_months: int = 1,     # Roll forward by 1 month
+        train_period_months: int = 6,  # 6 months training data
+        test_period_months: int = 1,  # 1 month test data
+        step_period_months: int = 1,  # Roll forward by 1 month
         min_return_threshold: float = 0.0,  # Minimum acceptable return
-        min_sharpe_threshold: float = 0.5,   # Minimum Sharpe ratio
+        min_sharpe_threshold: float = 0.5,  # Minimum Sharpe ratio
         max_drawdown_threshold: float = 0.15,  # Maximum acceptable drawdown
     ):
         """
@@ -73,9 +75,7 @@ class WalkForwardAnalyzer:
         self.max_drawdown_threshold = max_drawdown_threshold
 
     def generate_walk_forward_windows(
-        self,
-        data: pd.DataFrame,
-        date_column: str = "timestamp"
+        self, data: pd.DataFrame, date_column: str = "timestamp"
     ) -> List[Tuple[pd.DataFrame, pd.DataFrame]]:
         """
         Generate rolling train/test windows from data.
@@ -109,13 +109,11 @@ class WalkForwardAnalyzer:
 
             # Split data
             train_data = data[
-                (data[date_column] >= train_start) &
-                (data[date_column] < train_end)
+                (data[date_column] >= train_start) & (data[date_column] < train_end)
             ].copy()
 
             test_data = data[
-                (data[date_column] >= test_start) &
-                (data[date_column] < test_end)
+                (data[date_column] >= test_start) & (data[date_column] < test_end)
             ].copy()
 
             # Ensure both windows have sufficient data
@@ -127,10 +125,7 @@ class WalkForwardAnalyzer:
 
         return windows
 
-    def calculate_performance_metrics(
-        self,
-        returns: pd.Series
-    ) -> Dict:
+    def calculate_performance_metrics(self, returns: pd.Series) -> Dict:
         """
         Calculate performance metrics for a return series.
 
@@ -174,10 +169,7 @@ class WalkForwardAnalyzer:
         }
 
     def simulate_strategy(
-        self,
-        data: pd.DataFrame,
-        signals: pd.Series,
-        initial_capital: float = 10000.0
+        self, data: pd.DataFrame, signals: pd.Series, initial_capital: float = 10000.0
     ) -> pd.Series:
         """
         Simulate a simple strategy based on signals.
@@ -208,7 +200,7 @@ class WalkForwardAnalyzer:
         self,
         data: pd.DataFrame,
         signal_generator: Callable[[pd.DataFrame], pd.Series] = None,
-        initial_capital: float = 10000.0
+        initial_capital: float = 10000.0,
     ) -> Tuple[WalkForwardResult, List[WalkForwardWindow], Dict]:
         """
         Run complete walk-forward analysis.
@@ -228,13 +220,18 @@ class WalkForwardAnalyzer:
         wf_windows = self.generate_walk_forward_windows(data)
 
         if not wf_windows:
-            return WalkForwardResult.INCONCLUSIVE, windows, {
-                "error": "Insufficient data for walk-forward analysis",
-                "total_windows": 0,
-            }
+            return (
+                WalkForwardResult.INCONCLUSIVE,
+                windows,
+                {
+                    "error": "Insufficient data for walk-forward analysis",
+                    "total_windows": 0,
+                },
+            )
 
         # Default signal generator if none provided
         if signal_generator is None:
+
             def default_signal_generator(df):
                 # Simple trend-following: buy when price > SMA(20)
                 if len(df) < 20:
@@ -242,6 +239,7 @@ class WalkForwardAnalyzer:
                 sma = df["close"].rolling(20).mean()
                 signals = (df["close"] > sma).astype(int).replace(0, -1)
                 return signals
+
             signal_generator = default_signal_generator
 
         # Test each window
@@ -253,8 +251,12 @@ class WalkForwardAnalyzer:
             test_signals = signal_generator(test_data)
 
             # Simulate strategy
-            train_returns = self.simulate_strategy(train_data, train_signals, initial_capital)
-            test_returns = self.simulate_strategy(test_data, test_signals, initial_capital)
+            train_returns = self.simulate_strategy(
+                train_data, train_signals, initial_capital
+            )
+            test_returns = self.simulate_strategy(
+                test_data, test_signals, initial_capital
+            )
 
             # Calculate metrics
             train_metrics = self.calculate_performance_metrics(train_returns)
@@ -309,9 +311,9 @@ class WalkForwardAnalyzer:
 
             # Check if window passes all thresholds
             if (
-                window.test_return >= self.min_return_threshold and
-                window.test_sharpe >= self.min_sharpe_threshold and
-                window.test_max_drawdown <= self.max_drawdown_threshold
+                window.test_return >= self.min_return_threshold
+                and window.test_sharpe >= self.min_sharpe_threshold
+                and window.test_max_drawdown <= self.max_drawdown_threshold
             ):
                 passing_windows += 1
 
@@ -337,9 +339,7 @@ class WalkForwardAnalyzer:
         }
 
     def _determine_result(
-        self,
-        windows: List[WalkForwardWindow],
-        summary: Dict
+        self, windows: List[WalkForwardWindow], summary: Dict
     ) -> WalkForwardResult:
         """Determine overall walk-forward result."""
         if not windows:
@@ -360,10 +360,7 @@ class WalkForwardAnalyzer:
         return WalkForwardResult.INCONCLUSIVE
 
     def get_walk_forward_report(
-        self,
-        result: WalkForwardResult,
-        windows: List[WalkForwardWindow],
-        summary: Dict
+        self, result: WalkForwardResult, windows: List[WalkForwardWindow], summary: Dict
     ) -> str:
         """
         Generate human-readable walk-forward report.
@@ -401,8 +398,12 @@ class WalkForwardAnalyzer:
         if windows:
             report += "Window Details:\n"
             for i, window in enumerate(windows, 1):
-                train_emoji = "✅" if window.train_return >= self.min_return_threshold else "❌"
-                test_emoji = "✅" if window.test_return >= self.min_return_threshold else "❌"
+                train_emoji = (
+                    "✅" if window.train_return >= self.min_return_threshold else "❌"
+                )
+                test_emoji = (
+                    "✅" if window.test_return >= self.min_return_threshold else "❌"
+                )
 
                 report += (
                     f"  Window {i}: {window.train_start} to {window.test_end}\n"
@@ -417,7 +418,7 @@ def run_walk_forward_on_strategy(
     data: pd.DataFrame,
     train_period_months: int = 6,
     test_period_months: int = 1,
-    step_period_months: int = 1
+    step_period_months: int = 1,
 ) -> Tuple[WalkForwardResult, str]:
     """
     Convenience function to run walk-forward analysis on current strategy.

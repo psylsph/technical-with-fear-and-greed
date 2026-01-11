@@ -100,7 +100,9 @@ class DataValidator:
         time_diffs = price_series.index.to_series().diff()
 
         # Estimate expected frequency (most common difference)
-        mode_diff = time_diffs.mode()[0] if len(time_diffs.mode()) > 0 else time_diffs.median()
+        mode_diff = (
+            time_diffs.mode()[0] if len(time_diffs.mode()) > 0 else time_diffs.median()
+        )
 
         # Find gaps (differences > 2x expected frequency)
         gap_mask = time_diffs > (mode_diff * 2)
@@ -114,13 +116,15 @@ class DataValidator:
                 expected_size = mode_diff
                 gap_ratio = gap_size / expected_size if expected_size > 0 else 0
 
-                gaps.append({
-                    "start": str(price_series.index[prev_idx]),
-                    "end": str(idx),
-                    "gap_size": str(gap_size),
-                    "gap_ratio": float(gap_ratio),
-                    "missing_periods": int(gap_ratio / 1.0),  # Approximate
-                })
+                gaps.append(
+                    {
+                        "start": str(price_series.index[prev_idx]),
+                        "end": str(idx),
+                        "gap_size": str(gap_size),
+                        "gap_ratio": float(gap_ratio),
+                        "missing_periods": int(gap_ratio / 1.0),  # Approximate
+                    }
+                )
 
         # Detect price gaps (abnormal price jumps)
         price_changes = price_series.pct_change().abs()
@@ -135,12 +139,14 @@ class DataValidator:
                 curr_price = price_series.iloc[loc]
                 gap_pct = float((curr_price - prev_price) / prev_price * 100)
 
-                price_gaps.append({
-                    "timestamp": str(idx),
-                    "previous_price": float(prev_price),
-                    "current_price": float(curr_price),
-                    "gap_pct": gap_pct,
-                })
+                price_gaps.append(
+                    {
+                        "timestamp": str(idx),
+                        "previous_price": float(prev_price),
+                        "current_price": float(curr_price),
+                        "gap_pct": gap_pct,
+                    }
+                )
 
         return {
             "time_gaps": gaps,
@@ -167,7 +173,9 @@ class DataValidator:
         details = {}
 
         required_columns = ["open", "high", "low", "close"]
-        missing_columns = [col for col in required_columns if col not in ohlcv_data.columns]
+        missing_columns = [
+            col for col in required_columns if col not in ohlcv_data.columns
+        ]
 
         if missing_columns:
             warnings.append(f"Missing required columns: {missing_columns}")
@@ -220,7 +228,9 @@ class DataValidator:
 
         # Check for extreme price changes
         if "close" in ohlcv_data.columns:
-            extreme_changes = ohlcv_data["close"].pct_change().abs() > self.max_price_change_pct
+            extreme_changes = (
+                ohlcv_data["close"].pct_change().abs() > self.max_price_change_pct
+            )
             extreme_count = extreme_changes.sum()
 
             if extreme_count > 0:
@@ -271,7 +281,11 @@ class DataValidator:
             elif "zero or negative prices" in warning:
                 base_score -= min(deductions["zero_prices"], base_score)
             elif "outliers" in warning:
-                base_score -= min(deductions["outliers"] * details.get("outliers", {}).get("outlier_count", 1), base_score)
+                base_score -= min(
+                    deductions["outliers"]
+                    * details.get("outliers", {}).get("outlier_count", 1),
+                    base_score,
+                )
             elif "gaps" in warning:
                 base_score -= min(deductions["gaps"], base_score)
             elif "extreme price changes" in warning:

@@ -10,9 +10,7 @@ from .config import INITIAL_CAPITAL, MAKER_FEE, TAKER_FEE, TEST_STATE_FILE
 
 
 def calculate_portfolio_var(
-    positions: dict,
-    confidence_level: float = 0.95,
-    daily_volatility: float = 0.02
+    positions: dict, confidence_level: float = 0.95, daily_volatility: float = 0.02
 ) -> dict:
     """Calculate Value at Risk (VaR) for the portfolio.
 
@@ -53,7 +51,9 @@ def calculate_portfolio_var(
     # Calculate VaR using normal distribution
     z_score = norm.ppf(1 - confidence_level)
     var_daily = total_portfolio_value * daily_volatility * abs(z_score)
-    var_pct = (var_daily / total_portfolio_value) * 100 if total_portfolio_value > 0 else 0.0
+    var_pct = (
+        (var_daily / total_portfolio_value) * 100 if total_portfolio_value > 0 else 0.0
+    )
 
     return {
         "daily_var": var_daily,
@@ -69,8 +69,7 @@ def calculate_portfolio_var(
 
 
 def calculate_var_multiple_levels(
-    positions: dict,
-    daily_volatility: float = 0.02
+    positions: dict, daily_volatility: float = 0.02
 ) -> dict:
     """Calculate VaR at multiple confidence levels (95%, 99%, 99.9%).
 

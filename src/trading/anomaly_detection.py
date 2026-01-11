@@ -17,6 +17,7 @@ from ..config import PROJECT_ROOT
 
 class AnomalyType(Enum):
     """Types of anomalies that can be detected."""
+
     PRICE_SPIKE = "price_spike"
     VOLUME_ANOMALY = "volume_anomaly"
     FREQUENT_TRADING = "frequent_trading"
@@ -29,6 +30,7 @@ class AnomalyType(Enum):
 
 class AnomalySeverity(Enum):
     """Severity levels for anomalies."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -40,11 +42,11 @@ class AnomalyDetector:
 
     def __init__(
         self,
-        price_spike_threshold: float = 3.0,      # 3 sigma
-        volume_spike_threshold: float = 2.5,      # 2.5x average
+        price_spike_threshold: float = 3.0,  # 3 sigma
+        volume_spike_threshold: float = 2.5,  # 2.5x average
         volatility_spike_threshold: float = 2.0,  # 2x average
-        min_history: int = 20,                    # Minimum data points for analysis
-        alert_window_minutes: int = 60,           # Time window for alert grouping
+        min_history: int = 20,  # Minimum data points for analysis
+        alert_window_minutes: int = 60,  # Time window for alert grouping
     ):
         """
         Args:
@@ -93,7 +95,7 @@ class AnomalyDetector:
         anomaly_type: AnomalyType,
         severity: AnomalySeverity,
         message: str,
-        details: dict = None
+        details: dict = None,
     ) -> Dict:
         """Add an alert to the history."""
         alert = {
@@ -107,13 +109,13 @@ class AnomalyDetector:
         # Check if similar alert exists in recent window
         recent_cutoff = datetime.now() - timedelta(minutes=self.alert_window_minutes)
         recent_alerts = [
-            a for a in self.alert_history
+            a
+            for a in self.alert_history
             if datetime.fromisoformat(a["timestamp"]) > recent_cutoff
         ]
 
         similar_exists = any(
-            a["type"] == alert["type"] and
-            a["severity"] == alert["severity"]
+            a["type"] == alert["type"] and a["severity"] == alert["severity"]
             for a in recent_alerts
         )
 
@@ -125,9 +127,7 @@ class AnomalyDetector:
         return None  # Duplicate alert suppressed
 
     def check_price_anomaly(
-        self,
-        current_price: float,
-        volume: float = None
+        self, current_price: float, volume: float = None
     ) -> Tuple[bool, List[Dict]]:
         """
         Check for price anomalies.
@@ -169,7 +169,11 @@ class AnomalyDetector:
                 AnomalyType.PRICE_SPIKE,
                 severity,
                 message,
-                {"current_price": current_price, "mean_price": mean_price, "z_score": z_score}
+                {
+                    "current_price": current_price,
+                    "mean_price": mean_price,
+                    "z_score": z_score,
+                },
             )
             if alert:
                 alerts.append(alert)
@@ -177,9 +181,7 @@ class AnomalyDetector:
         return len(alerts) > 0, alerts
 
     def check_volume_anomaly(
-        self,
-        current_volume: float,
-        current_price: float = None
+        self, current_volume: float, current_price: float = None
     ) -> Tuple[bool, List[Dict]]:
         """
         Check for volume anomalies.
@@ -211,7 +213,9 @@ class AnomalyDetector:
         # Volume spike
         volume_ratio = current_volume / median_volume
         if volume_ratio > self.volume_spike_threshold:
-            severity = AnomalySeverity.HIGH if volume_ratio > 5 else AnomalySeverity.MEDIUM
+            severity = (
+                AnomalySeverity.HIGH if volume_ratio > 5 else AnomalySeverity.MEDIUM
+            )
             message = (
                 f"Volume spike: {current_volume:.0f} is {volume_ratio:.1f}x "
                 f"the median {median_volume:.0f}"
@@ -224,7 +228,7 @@ class AnomalyDetector:
                     "current_volume": current_volume,
                     "median_volume": median_volume,
                     "ratio": volume_ratio,
-                }
+                },
             )
             if alert:
                 alerts.append(alert)
@@ -232,10 +236,7 @@ class AnomalyDetector:
         return len(alerts) > 0, alerts
 
     def check_volatility_anomaly(
-        self,
-        high: float,
-        low: float,
-        close: float
+        self, high: float, low: float, close: float
     ) -> Tuple[bool, List[Dict]]:
         """
         Check for volatility anomalies.
@@ -253,11 +254,7 @@ class AnomalyDetector:
         # Calculate true range
         if len(self.price_history) > 0:
             prev_close = self.price_history[-1]
-            true_range = max(
-                high - low,
-                abs(high - prev_close),
-                abs(low - prev_close)
-            )
+            true_range = max(high - low, abs(high - prev_close), abs(low - prev_close))
 
             # Normalize by close price
             normalized_range = true_range / close if close > 0 else 0
@@ -276,7 +273,9 @@ class AnomalyDetector:
 
                 if volatility_ratio > self.volatility_spike_threshold:
                     severity = (
-                        AnomalySeverity.HIGH if volatility_ratio > 3 else AnomalySeverity.MEDIUM
+                        AnomalySeverity.HIGH
+                        if volatility_ratio > 3
+                        else AnomalySeverity.MEDIUM
                     )
                     message = (
                         f"Volatility spike: {normalized_range:.2%} is "
@@ -290,7 +289,7 @@ class AnomalyDetector:
                             "current_volatility": normalized_range,
                             "avg_volatility": avg_volatility,
                             "ratio": volatility_ratio,
-                        }
+                        },
                     )
                     if alert:
                         alerts.append(alert)
@@ -298,9 +297,7 @@ class AnomalyDetector:
         return len(alerts) > 0, alerts
 
     def check_gap_anomaly(
-        self,
-        previous_close: float,
-        current_open: float
+        self, previous_close: float, current_open: float
     ) -> Tuple[bool, List[Dict]]:
         """
         Check for price gaps between periods.
@@ -324,7 +321,9 @@ class AnomalyDetector:
 
         if abs(gap_pct) > gap_threshold:
             direction = "up" if gap_pct > 0 else "down"
-            severity = AnomalySeverity.HIGH if abs(gap_pct) > 0.05 else AnomalySeverity.MEDIUM
+            severity = (
+                AnomalySeverity.HIGH if abs(gap_pct) > 0.05 else AnomalySeverity.MEDIUM
+            )
             message = (
                 f"Price gap {direction}: {gap_pct:+.2%} from "
                 f"${previous_close:.2f} to ${current_open:.2f}"
@@ -337,7 +336,7 @@ class AnomalyDetector:
                     "previous_close": previous_close,
                     "current_open": current_open,
                     "gap_pct": gap_pct,
-                }
+                },
             )
             if alert:
                 alerts.append(alert)
@@ -345,8 +344,7 @@ class AnomalyDetector:
         return len(alerts) > 0, alerts
 
     def check_frequent_trading(
-        self,
-        trade_timestamp: str = None
+        self, trade_timestamp: str = None
     ) -> Tuple[bool, List[Dict]]:
         """
         Check for excessive trading frequency.
@@ -370,21 +368,24 @@ class AnomalyDetector:
         # Check trades in last 10 minutes
         now = datetime.now()
         recent_trades = [
-            t for t in self.trade_history
+            t
+            for t in self.trade_history
             if now - datetime.fromisoformat(t) <= timedelta(minutes=10)
         ]
 
         # Alert if more than 5 trades in 10 minutes
         if len(recent_trades) > 5:
             severity = (
-                AnomalySeverity.CRITICAL if len(recent_trades) > 10 else AnomalySeverity.HIGH
+                AnomalySeverity.CRITICAL
+                if len(recent_trades) > 10
+                else AnomalySeverity.HIGH
             )
             message = f"Frequent trading: {len(recent_trades)} trades in 10 minutes"
             alert = self._add_alert(
                 AnomalyType.FREQUENT_TRADING,
                 severity,
                 message,
-                {"trade_count": len(recent_trades), "window_minutes": 10}
+                {"trade_count": len(recent_trades), "window_minutes": 10},
             )
             if alert:
                 alerts.append(alert)
@@ -392,9 +393,7 @@ class AnomalyDetector:
         return len(alerts) > 0, alerts
 
     def check_pnl_anomaly(
-        self,
-        current_pnl_pct: float,
-        expected_daily_pnl_pct: float = 0.0
+        self, current_pnl_pct: float, expected_daily_pnl_pct: float = 0.0
     ) -> Tuple[bool, List[Dict]]:
         """
         Check for unusual P&L values.
@@ -411,14 +410,16 @@ class AnomalyDetector:
         # Large loss alert: > 3% daily loss
         if current_pnl_pct < -3.0:
             severity = (
-                AnomalySeverity.CRITICAL if current_pnl_pct < -5.0 else AnomalySeverity.HIGH
+                AnomalySeverity.CRITICAL
+                if current_pnl_pct < -5.0
+                else AnomalySeverity.HIGH
             )
             message = f"Large loss: {current_pnl_pct:.2%} daily P&L"
             alert = self._add_alert(
                 AnomalyType.LARGE_LOSSES,
                 severity,
                 message,
-                {"pnl_pct": current_pnl_pct, "threshold": -3.0}
+                {"pnl_pct": current_pnl_pct, "threshold": -3.0},
             )
             if alert:
                 alerts.append(alert)
@@ -431,7 +432,7 @@ class AnomalyDetector:
                 AnomalyType.UNUSUAL_PNL,
                 severity,
                 message,
-                {"pnl_pct": current_pnl_pct, "threshold": 5.0}
+                {"pnl_pct": current_pnl_pct, "threshold": 5.0},
             )
             if alert:
                 alerts.append(alert)
@@ -442,7 +443,7 @@ class AnomalyDetector:
         self,
         target_position_size: float,
         actual_position_size: float,
-        max_drift_pct: float = 0.10
+        max_drift_pct: float = 0.10,
     ) -> Tuple[bool, List[Dict]]:
         """
         Check for position drift from target.
@@ -460,7 +461,9 @@ class AnomalyDetector:
         if target_position_size == 0:
             return False, alerts
 
-        drift_pct = abs(actual_position_size - target_position_size) / target_position_size
+        drift_pct = (
+            abs(actual_position_size - target_position_size) / target_position_size
+        )
 
         if drift_pct > max_drift_pct:
             severity = (
@@ -478,7 +481,7 @@ class AnomalyDetector:
                     "target": target_position_size,
                     "actual": actual_position_size,
                     "drift_pct": drift_pct,
-                }
+                },
             )
             if alert:
                 alerts.append(alert)
@@ -486,9 +489,7 @@ class AnomalyDetector:
         return len(alerts) > 0, alerts
 
     def get_recent_alerts(
-        self,
-        hours: int = 24,
-        severity: AnomalySeverity = None
+        self, hours: int = 24, severity: AnomalySeverity = None
     ) -> List[Dict]:
         """
         Get recent alerts.
@@ -502,7 +503,8 @@ class AnomalyDetector:
         """
         cutoff = datetime.now() - timedelta(hours=hours)
         recent = [
-            a for a in self.alert_history
+            a
+            for a in self.alert_history
             if datetime.fromisoformat(a["timestamp"]) > cutoff
         ]
 
@@ -536,12 +538,19 @@ class AnomalyDetector:
         if severity_counts:
             summary += "  By Severity:\n"
             for sev, count in sorted(severity_counts.items()):
-                emoji = {"critical": "🚨", "high": "🔴", "medium": "🟠", "low": "🟡"}.get(sev, "⚪")
+                emoji = {
+                    "critical": "🚨",
+                    "high": "🔴",
+                    "medium": "🟠",
+                    "low": "🟡",
+                }.get(sev, "⚪")
                 summary += f"    {emoji} {sev.upper()}: {count}\n"
 
         if type_counts:
             summary += "  By Type:\n"
-            for atype, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            for atype, count in sorted(
+                type_counts.items(), key=lambda x: x[1], reverse=True
+            ):
                 summary += f"    {atype}: {count}\n"
 
         # Show most critical recent alerts
@@ -561,7 +570,9 @@ class AnomalyDetector:
             Tuple of (should_pause: bool, reason: str)
         """
         # Check for critical anomalies in last hour
-        recent_critical = self.get_recent_alerts(hours=1, severity=AnomalySeverity.CRITICAL)
+        recent_critical = self.get_recent_alerts(
+            hours=1, severity=AnomalySeverity.CRITICAL
+        )
 
         if recent_critical:
             # Count unique types
@@ -571,6 +582,9 @@ class AnomalyDetector:
         # Check for high severity anomalies
         recent_high = self.get_recent_alerts(hours=1, severity=AnomalySeverity.HIGH)
         if len(recent_high) >= 3:
-            return True, f"Multiple high severity anomalies: {len(recent_high)} in last hour"
+            return (
+                True,
+                f"Multiple high severity anomalies: {len(recent_high)} in last hour",
+            )
 
         return False, ""

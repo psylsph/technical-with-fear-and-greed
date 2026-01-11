@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 # Load environment variables from .env file

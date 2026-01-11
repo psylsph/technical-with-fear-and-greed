@@ -44,10 +44,7 @@ class CorrelationAnalyzer:
             json.dump(self.state, f, indent=2)
 
     def calculate_rolling_correlation(
-        self,
-        price_series_1: pd.Series,
-        price_series_2: pd.Series,
-        window: int = 20
+        self, price_series_1: pd.Series, price_series_2: pd.Series, window: int = 20
     ) -> pd.Series:
         """
         Calculate rolling correlation between two price series.
@@ -65,18 +62,19 @@ class CorrelationAnalyzer:
         returns_2 = price_series_2.pct_change().dropna()
 
         # Align series
-        aligned_returns = pd.DataFrame({
-            "returns_1": returns_1,
-            "returns_2": returns_2
-        }).dropna()
+        aligned_returns = pd.DataFrame(
+            {"returns_1": returns_1, "returns_2": returns_2}
+        ).dropna()
 
         if len(aligned_returns) < window:
             return pd.Series([], dtype=float)
 
         # Calculate rolling correlation
-        rolling_corr = aligned_returns["returns_1"].rolling(
-            window=window
-        ).corr(aligned_returns["returns_2"])
+        rolling_corr = (
+            aligned_returns["returns_1"]
+            .rolling(window=window)
+            .corr(aligned_returns["returns_2"])
+        )
 
         return rolling_corr
 
@@ -85,7 +83,7 @@ class CorrelationAnalyzer:
         price_series_1: pd.Series,
         price_series_2: pd.Series,
         asset_1_name: str = "Asset1",
-        asset_2_name: str = "Asset2"
+        asset_2_name: str = "Asset2",
     ) -> Dict:
         """
         Calculate comprehensive correlation metrics between two assets.
@@ -104,17 +102,16 @@ class CorrelationAnalyzer:
         returns_2 = price_series_2.pct_change().dropna()
 
         # Align series
-        aligned_returns = pd.DataFrame({
-            f"{asset_1_name}_returns": returns_1,
-            f"{asset_2_name}_returns": returns_2
-        }).dropna()
+        aligned_returns = pd.DataFrame(
+            {f"{asset_1_name}_returns": returns_1, f"{asset_2_name}_returns": returns_2}
+        ).dropna()
 
         if len(aligned_returns) < 2:
             return {
                 "correlation": 0.0,
                 "p_value": 1.0,
                 "sample_size": 0,
-                "interpretation": "Insufficient data"
+                "interpretation": "Insufficient data",
             }
 
         # Calculate Pearson correlation
@@ -125,6 +122,7 @@ class CorrelationAnalyzer:
         if n > 2:
             t_stat = correlation * np.sqrt(n - 2) / np.sqrt(1 - correlation**2)
             from scipy import stats
+
             p_value = 2 * (1 - stats.t.cdf(abs(t_stat), n - 2))
         else:
             p_value = 1.0
@@ -151,10 +149,16 @@ class CorrelationAnalyzer:
         rolling_correlations = {}
         for window in [7, 14, 30]:
             if len(aligned_returns) >= window:
-                rolling_corr = aligned_returns.iloc[:, 0].rolling(
-                    window=window
-                ).corr(aligned_returns.iloc[:, 1])
-                rolling_correlations[f"{window}_day"] = float(rolling_corr.iloc[-1]) if not pd.isna(rolling_corr.iloc[-1]) else 0.0
+                rolling_corr = (
+                    aligned_returns.iloc[:, 0]
+                    .rolling(window=window)
+                    .corr(aligned_returns.iloc[:, 1])
+                )
+                rolling_correlations[f"{window}_day"] = (
+                    float(rolling_corr.iloc[-1])
+                    if not pd.isna(rolling_corr.iloc[-1])
+                    else 0.0
+                )
 
         return {
             "correlation": float(correlation),
@@ -168,10 +172,7 @@ class CorrelationAnalyzer:
         }
 
     def analyze_eth_btc_correlation(
-        self,
-        eth_prices: pd.Series,
-        btc_prices: pd.Series,
-        save_to_state: bool = True
+        self, eth_prices: pd.Series, btc_prices: pd.Series, save_to_state: bool = True
     ) -> Dict:
         """
         Analyze correlation between ETH and BTC.
@@ -185,15 +186,16 @@ class CorrelationAnalyzer:
             Dict with correlation analysis results
         """
         result = self.calculate_correlation_metrics(
-            eth_prices,
-            btc_prices,
-            "ETH",
-            "BTC"
+            eth_prices, btc_prices, "ETH", "BTC"
         )
 
         result["analysis_time"] = datetime.now().isoformat()
-        result["current_eth_price"] = float(eth_prices.iloc[-1]) if len(eth_prices) > 0 else None
-        result["current_btc_price"] = float(btc_prices.iloc[-1]) if len(btc_prices) > 0 else None
+        result["current_eth_price"] = (
+            float(eth_prices.iloc[-1]) if len(eth_prices) > 0 else None
+        )
+        result["current_btc_price"] = (
+            float(btc_prices.iloc[-1]) if len(btc_prices) > 0 else None
+        )
 
         # Calculate 30-day correlation trend
         if len(eth_prices) >= 30 and len(btc_prices) >= 30:
@@ -202,27 +204,35 @@ class CorrelationAnalyzer:
 
             rolling_correlations = []
             for i in range(10, 30):
-                eth_window = eth_recent.iloc[i-10:i]
-                btc_window = btc_recent.iloc[i-10:i]
+                eth_window = eth_recent.iloc[i - 10 : i]
+                btc_window = btc_recent.iloc[i - 10 : i]
 
                 corr = eth_window.pct_change().corr(btc_window.pct_change())
                 if not pd.isna(corr):
                     rolling_correlations.append(corr)
 
             if rolling_correlations:
-                corr_trend = "increasing" if rolling_correlations[-1] > rolling_correlations[0] else "decreasing"
+                corr_trend = (
+                    "increasing"
+                    if rolling_correlations[-1] > rolling_correlations[0]
+                    else "decreasing"
+                )
                 result["correlation_trend"] = corr_trend
-                result["recent_correlations"] = [float(c) for c in rolling_correlations[-5:]]
+                result["recent_correlations"] = [
+                    float(c) for c in rolling_correlations[-5:]
+                ]
 
         # Save to state if requested
         if save_to_state:
-            self.state["correlations"].append({
-                "timestamp": result["analysis_time"],
-                "correlation": result["correlation"],
-                "interpretation": result["interpretation"],
-                "is_significant": result["is_significant"],
-                "diversification_benefit": result["diversification_benefit"],
-            })
+            self.state["correlations"].append(
+                {
+                    "timestamp": result["analysis_time"],
+                    "correlation": result["correlation"],
+                    "interpretation": result["interpretation"],
+                    "is_significant": result["is_significant"],
+                    "diversification_benefit": result["diversification_benefit"],
+                }
+            )
 
             # Keep only last 100 correlations
             if len(self.state["correlations"]) > 100:
@@ -258,19 +268,20 @@ class CorrelationAnalyzer:
         cutoff_time = datetime.now() - timedelta(days=days)
 
         recent_correlations = [
-            c for c in self.state.get("correlations", [])
+            c
+            for c in self.state.get("correlations", [])
             if datetime.fromisoformat(c["timestamp"]) > cutoff_time
         ]
 
         if not recent_correlations:
             return None
 
-        return sum(c["correlation"] for c in recent_correlations) / len(recent_correlations)
+        return sum(c["correlation"] for c in recent_correlations) / len(
+            recent_correlations
+        )
 
     def assess_diversification_benefit(
-        self,
-        correlation: float,
-        threshold: float = 0.7
+        self, correlation: float, threshold: float = 0.7
     ) -> Dict:
         """
         Assess whether adding an asset provides diversification benefit.

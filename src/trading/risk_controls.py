@@ -77,7 +77,9 @@ class DailyLossLimit:
         # Check if loss limit exceeded
         if daily_pnl_pct <= -self.daily_loss_limit:
             self.state["trading_stopped"] = True
-            self.state["stop_reason"] = f"Daily loss limit reached: {daily_pnl_pct:.2%} (limit: {self.daily_loss_limit:.2%})"
+            self.state["stop_reason"] = (
+                f"Daily loss limit reached: {daily_pnl_pct:.2%} (limit: {self.daily_loss_limit:.2%})"
+            )
             self._save_state()
             return True, self.state["stop_reason"]
 
@@ -86,10 +88,12 @@ class DailyLossLimit:
 
     def record_trade(self, pnl: float):
         """Record a trade in today's log."""
-        self.state["trades_today"].append({
-            "time": datetime.now().isoformat(),
-            "pnl": pnl,
-        })
+        self.state["trades_today"].append(
+            {
+                "time": datetime.now().isoformat(),
+                "pnl": pnl,
+            }
+        )
         self._save_state()
 
     def get_daily_summary(self) -> dict:
@@ -98,11 +102,13 @@ class DailyLossLimit:
             "date": self.state["date"],
             "daily_pnl_pct": self.state["daily_pnl"],
             "daily_pnl_$": (self.state["daily_pnl"] * self.state["initial_equity"])
-                          if self.state["initial_equity"] else 0,
+            if self.state["initial_equity"]
+            else 0,
             "num_trades": len(self.state["trades_today"]),
             "trading_stopped": self.state["trading_stopped"],
             "remaining_loss_limit": self.daily_loss_limit + self.state["daily_pnl"]
-                                    if self.state["daily_pnl"] < 0 else self.daily_loss_limit,
+            if self.state["daily_pnl"] < 0
+            else self.daily_loss_limit,
         }
 
     def reset_new_day(self):
@@ -180,7 +186,9 @@ class TimeBasedExit:
                 pos["highest_price_time"] = datetime.now().isoformat()
                 self._save_state()
 
-    def check_time_exit(self, symbol: str, current_price: float) -> Tuple[bool, Optional[str]]:
+    def check_time_exit(
+        self, symbol: str, current_price: float
+    ) -> Tuple[bool, Optional[str]]:
         """
         Check if position should be exited due to time limit.
 
@@ -203,7 +211,10 @@ class TimeBasedExit:
         pnl_pct = (current_price - entry_price) / entry_price
 
         if days_held >= self.max_hold_days and pnl_pct < 0:
-            return True, f"Time exit: Held {days_held} days at {pnl_pct:.2%} loss (limit: {self.max_hold_days} days)"
+            return (
+                True,
+                f"Time exit: Held {days_held} days at {pnl_pct:.2%} loss (limit: {self.max_hold_days} days)",
+            )
 
         return False, None
 
@@ -244,11 +255,15 @@ class TrailingStop:
             }
         elif current_price > self.state["positions"][symbol].get("highest_price", 0):
             self.state["positions"][symbol]["highest_price"] = current_price
-            self.state["positions"][symbol]["highest_price_time"] = datetime.now().isoformat()
+            self.state["positions"][symbol]["highest_price_time"] = (
+                datetime.now().isoformat()
+            )
 
         self._save_state()
 
-    def check_trailing_stop(self, symbol: str, current_price: float) -> Tuple[bool, Optional[str]]:
+    def check_trailing_stop(
+        self, symbol: str, current_price: float
+    ) -> Tuple[bool, Optional[str]]:
         """
         Check if trailing stop is triggered.
 
@@ -267,7 +282,10 @@ class TrailingStop:
 
         if current_price < trailing_stop_price:
             pnl_pct = (current_price - highest_price) / highest_price
-            return True, f"Trailing stop: Price ${current_price:.2f} below stop ${trailing_stop_price:.2f} (highest was ${highest_price:.2f}, locked in {pnl_pct:.2%})"
+            return (
+                True,
+                f"Trailing stop: Price ${current_price:.2f} below stop ${trailing_stop_price:.2f} (highest was ${highest_price:.2f}, locked in {pnl_pct:.2%})",
+            )
 
         return False, None
 
@@ -289,7 +307,9 @@ class PositionSizeLimit:
         """
         self.max_position_pct = max_position_pct
 
-    def check_position_size(self, proposed_qty: float, current_price: float, portfolio_equity: float) -> Tuple[bool, float, Optional[str]]:
+    def check_position_size(
+        self, proposed_qty: float, current_price: float, portfolio_equity: float
+    ) -> Tuple[bool, float, Optional[str]]:
         """
         Check if proposed position size exceeds limit.
 
@@ -311,12 +331,16 @@ class PositionSizeLimit:
 
         # Exceeds limit - calculate adjusted quantity
         max_allowed_value = portfolio_equity * self.max_position_pct
-        adjusted_qty = (max_allowed_value / current_price)
+        adjusted_qty = max_allowed_value / current_price
         adjusted_qty = round(adjusted_qty, 6)
 
-        return False, adjusted_qty, (
-            f"Position size limit: Proposed {proposed_pct:.2%} exceeds {self.max_position_pct:.2%} maximum. "
-            f"Adjusting from {proposed_qty:.6f} to {adjusted_qty:.6f} shares (${max_allowed_value:.2f} value)"
+        return (
+            False,
+            adjusted_qty,
+            (
+                f"Position size limit: Proposed {proposed_pct:.2%} exceeds {self.max_position_pct:.2%} maximum. "
+                f"Adjusting from {proposed_qty:.6f} to {adjusted_qty:.6f} shares (${max_allowed_value:.2f} value)"
+            ),
         )
 
     def get_max_quantity(self, portfolio_equity: float, current_price: float) -> float:
@@ -336,7 +360,13 @@ class RiskControls:
         self.trailing_stop = TrailingStop(trailing_percent=0.03)
         self.position_limit = PositionSizeLimit(max_position_pct=0.05)
 
-    def check_all_risks(self, symbol: str, position_info: dict, current_price: float, current_equity: float) -> Tuple[bool, Optional[str]]:
+    def check_all_risks(
+        self,
+        symbol: str,
+        position_info: dict,
+        current_price: float,
+        current_equity: float,
+    ) -> Tuple[bool, Optional[str]]:
         """
         Check all risk controls.
 
@@ -360,7 +390,9 @@ class RiskControls:
             self.trailing_stop.update_highest_price(symbol, current_price)
 
             # Check trailing stop
-            should_exit, reason = self.trailing_stop.check_trailing_stop(symbol, current_price)
+            should_exit, reason = self.trailing_stop.check_trailing_stop(
+                symbol, current_price
+            )
             if should_exit:
                 return True, reason
 
@@ -381,7 +413,9 @@ class RiskControls:
         self.time_exit.record_exit(symbol)
         # Trailing stop state will be cleaned up naturally
 
-    def check_position_size(self, proposed_qty: float, current_price: float, portfolio_equity: float) -> Tuple[bool, float, Optional[str]]:
+    def check_position_size(
+        self, proposed_qty: float, current_price: float, portfolio_equity: float
+    ) -> Tuple[bool, float, Optional[str]]:
         """
         Check if proposed position size exceeds limit.
 
@@ -393,9 +427,13 @@ class RiskControls:
         Returns:
             Tuple of (allowed: bool, adjusted_qty: float, reason: str)
         """
-        return self.position_limit.check_position_size(proposed_qty, current_price, portfolio_equity)
+        return self.position_limit.check_position_size(
+            proposed_qty, current_price, portfolio_equity
+        )
 
-    def get_max_position_quantity(self, portfolio_equity: float, current_price: float) -> float:
+    def get_max_position_quantity(
+        self, portfolio_equity: float, current_price: float
+    ) -> float:
         """Get maximum allowed position quantity."""
         return self.position_limit.get_max_quantity(portfolio_equity, current_price)
 

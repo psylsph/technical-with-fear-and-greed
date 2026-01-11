@@ -130,7 +130,8 @@ class CrashRecoveryManager:
 
         # Filter crashes within the time window
         recent_crashes = [
-            c for c in crash_data.get("crashes", [])
+            c
+            for c in crash_data.get("crashes", [])
             if datetime.fromisoformat(c["timestamp"]) > window_start
         ]
 
@@ -170,18 +171,17 @@ class CrashRecoveryManager:
                 f"Manual intervention required."
             )
 
-        return True, f"Crash {crash_info['crash_count']}/{crash_info['max_restarts']} - Restarting"
+        return (
+            True,
+            f"Crash {crash_info['crash_count']}/{crash_info['max_restarts']} - Restarting",
+        )
 
     def reset_crash_count(self):
         """Reset the crash count (call after successful startup)."""
         self._save_json(self.crash_count_file, {"crashes": []})
 
     def save_position_state(
-        self,
-        symbol: str,
-        qty: float,
-        entry_price: float,
-        side: str = "long"
+        self, symbol: str, qty: float, entry_price: float, side: str = "long"
     ):
         """
         Save position state for recovery.
@@ -234,7 +234,8 @@ class CrashRecoveryManager:
         window_start = now - timedelta(minutes=self.restart_window_minutes)
 
         recent_crashes = [
-            c for c in crash_data.get("crashes", [])
+            c
+            for c in crash_data.get("crashes", [])
             if datetime.fromisoformat(c["timestamp"]) > window_start
         ]
 
@@ -285,11 +286,14 @@ def run_with_recovery(
         # Check if we should restart
         should_restart, reason = recovery_manager.should_restart_after_crash()
 
-        recovery_manager.save_checkpoint("crash", {
-            "error": str(e),
-            "should_restart": should_restart,
-            "reason": reason,
-        })
+        recovery_manager.save_checkpoint(
+            "crash",
+            {
+                "error": str(e),
+                "should_restart": should_restart,
+                "reason": reason,
+            },
+        )
 
         print(f"ERROR: {e}")
         print(f"Crash recovery: {reason}")
@@ -297,7 +301,9 @@ def run_with_recovery(
         if should_restart:
             print("Attempting restart...")
             # Recursive restart with same function
-            return run_with_recovery(main_func, f"restart_{checkpoint_name}", state_data, recovery_manager)
+            return run_with_recovery(
+                main_func, f"restart_{checkpoint_name}", state_data, recovery_manager
+            )
         else:
             print("Manual intervention required. Exiting.")
             sys.exit(1)

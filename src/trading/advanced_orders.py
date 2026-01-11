@@ -10,6 +10,7 @@ from enum import Enum
 
 class OrderType(Enum):
     """Types of orders."""
+
     MARKET = "market"
     LIMIT = "limit"
     STOP_LIMIT = "stop_limit"
@@ -18,6 +19,7 @@ class OrderType(Enum):
 
 class OrderSide(Enum):
     """Order sides."""
+
     BUY = "buy"
     SELL = "sell"
 
@@ -29,7 +31,7 @@ class LimitOrderManager:
         self,
         default_slippage_tolerance: float = 0.001,  # 0.1%
         max_wait_seconds: int = 300,
-        price_improvement: float = 0.0005  # Try to get better price by 0.05%
+        price_improvement: float = 0.0005,  # Try to get better price by 0.05%
     ):
         """
         Args:
@@ -49,7 +51,7 @@ class LimitOrderManager:
         side: OrderSide,
         current_price: float,
         slippage_tolerance: float = None,
-        reference_price: float = None
+        reference_price: float = None,
     ) -> float:
         """
         Calculate optimal limit price.
@@ -90,7 +92,7 @@ class LimitOrderManager:
         side: OrderSide,
         quantity: float,
         current_price: float,
-        slippage_tolerance: float = None
+        slippage_tolerance: float = None,
     ) -> Dict:
         """
         Create a limit order.
@@ -106,9 +108,7 @@ class LimitOrderManager:
             Order dict with price and details
         """
         limit_price = self.calculate_limit_price(
-            side,
-            current_price,
-            slippage_tolerance
+            side, current_price, slippage_tolerance
         )
 
         order = {
@@ -132,7 +132,7 @@ class LimitOrderManager:
         quantity: float,
         current_price: float,
         portfolio_value: float,
-        urgency: str = "normal"
+        urgency: str = "normal",
     ) -> bool:
         """
         Determine if limit order should be used vs market order.
@@ -165,10 +165,7 @@ class LimitOrderManager:
         return False
 
     def check_order_fill(
-        self,
-        order_id: str,
-        current_price: float,
-        side: OrderSide
+        self, order_id: str, current_price: float, side: OrderSide
     ) -> Tuple[bool, str]:
         """
         Check if limit order would be filled.
@@ -204,7 +201,10 @@ class LimitOrderManager:
                 order["status"] = "filled"
                 del self.pending_orders[order_id]
                 self.order_history.append(order)
-                return True, f"Filled at ${current_price:.2f} (limit was ${limit_price:.2f})"
+                return (
+                    True,
+                    f"Filled at ${current_price:.2f} (limit was ${limit_price:.2f})",
+                )
         else:
             # Sell order fills if current price >= limit price
             if current_price >= limit_price:
@@ -213,9 +213,15 @@ class LimitOrderManager:
                 order["status"] = "filled"
                 del self.pending_orders[order_id]
                 self.order_history.append(order)
-                return True, f"Filled at ${current_price:.2f} (limit was ${limit_price:.2f})"
+                return (
+                    True,
+                    f"Filled at ${current_price:.2f} (limit was ${limit_price:.2f})",
+                )
 
-        return False, f"Waiting (current: ${current_price:.2f}, limit: ${limit_price:.2f})"
+        return (
+            False,
+            f"Waiting (current: ${current_price:.2f}, limit: ${limit_price:.2f})",
+        )
 
     def cancel_order(self, order_id: str) -> bool:
         """Cancel a pending order."""
@@ -243,9 +249,9 @@ class OrderSplitter:
     def __init__(
         self,
         max_order_size_pct: float = 0.02,  # 2% of portfolio per order
-        min_order_size: float = 0.001,     # Minimum order size
-        chunk_count: int = 3,                # Default number of chunks
-        delay_between_chunks: int = 30       # Seconds between orders
+        min_order_size: float = 0.001,  # Minimum order size
+        chunk_count: int = 3,  # Default number of chunks
+        delay_between_chunks: int = 30,  # Seconds between orders
     ):
         """
         Args:
@@ -262,10 +268,7 @@ class OrderSplitter:
         self.split_history = {}
 
     def should_split_order(
-        self,
-        quantity: float,
-        current_price: float,
-        portfolio_value: float
+        self, quantity: float, current_price: float, portfolio_value: float
     ) -> Tuple[bool, int]:
         """
         Check if order should be split.
@@ -294,7 +297,7 @@ class OrderSplitter:
         side: OrderSide,
         total_quantity: float,
         current_price: float,
-        portfolio_value: float
+        portfolio_value: float,
     ) -> List[Dict]:
         """
         Split an order into smaller chunks.
@@ -310,22 +313,22 @@ class OrderSplitter:
             List of chunked orders with delays
         """
         should_split, num_chunks = self.should_split_order(
-            total_quantity,
-            current_price,
-            portfolio_value
+            total_quantity, current_price, portfolio_value
         )
 
         if not should_split:
             # Return single order
-            return [{
-                "symbol": symbol,
-                "side": side.value,
-                "quantity": total_quantity,
-                "price": current_price,
-                "chunk": 1,
-                "total_chunks": 1,
-                "delay_seconds": 0,
-            }]
+            return [
+                {
+                    "symbol": symbol,
+                    "side": side.value,
+                    "quantity": total_quantity,
+                    "price": current_price,
+                    "chunk": 1,
+                    "total_chunks": 1,
+                    "delay_seconds": 0,
+                }
+            ]
 
         # Calculate chunk sizes
         chunk_qty = total_quantity / num_chunks
@@ -343,15 +346,17 @@ class OrderSplitter:
             if qty < self.min_order_size:
                 continue
 
-            orders.append({
-                "symbol": symbol,
-                "side": side.value,
-                "quantity": qty,
-                "price": current_price,
-                "chunk": i + 1,
-                "total_chunks": num_chunks,
-                "delay_seconds": i * self.delay_between_chunks,
-            })
+            orders.append(
+                {
+                    "symbol": symbol,
+                    "side": side.value,
+                    "quantity": qty,
+                    "price": current_price,
+                    "chunk": i + 1,
+                    "total_chunks": num_chunks,
+                    "delay_seconds": i * self.delay_between_chunks,
+                }
+            )
 
         # Record split
         self.split_history[f"{symbol}_{side.value}_{datetime.now().timestamp()}"] = {
@@ -377,5 +382,7 @@ class OrderSplitter:
         return {
             "total_splits": total_splits,
             "avg_chunks": avg_chunks,
-            "max_chunks_seen": max(s["num_chunks"] for s in self.split_history.values()),
+            "max_chunks_seen": max(
+                s["num_chunks"] for s in self.split_history.values()
+            ),
         }

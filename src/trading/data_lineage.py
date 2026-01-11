@@ -19,6 +19,7 @@ from ..config import PROJECT_ROOT
 
 class DataSourceType(Enum):
     """Types of data sources."""
+
     API = "api"
     FILE = "file"
     DATABASE = "database"
@@ -30,6 +31,7 @@ class DataSourceType(Enum):
 
 class TransformationType(Enum):
     """Types of data transformations."""
+
     FILTER = "filter"
     AGGREGATE = "aggregate"
     JOIN = "join"
@@ -43,6 +45,7 @@ class TransformationType(Enum):
 @dataclass
 class DataOrigin:
     """Origin information for a dataset."""
+
     source_type: DataSourceType
     source_name: str
     source_id: str
@@ -61,6 +64,7 @@ class DataOrigin:
 @dataclass
 class Transformation:
     """A transformation applied to data."""
+
     transformation_id: str
     transformation_type: TransformationType
     name: str
@@ -80,6 +84,7 @@ class Transformation:
 @dataclass
 class DataLineageRecord:
     """Complete lineage record for a dataset."""
+
     data_id: str
     name: str
     description: str
@@ -187,7 +192,9 @@ class DataLineageTracker:
                     for trans_data in record_data["transformations"]:
                         trans = Transformation(
                             transformation_id=trans_data["transformation_id"],
-                            transformation_type=TransformationType(trans_data["transformation_type"]),
+                            transformation_type=TransformationType(
+                                trans_data["transformation_type"]
+                            ),
                             name=trans_data["name"],
                             description=trans_data["description"],
                             parameters=trans_data["parameters"],
@@ -495,13 +502,15 @@ class DataLineageTracker:
 
             if current_id in self.records:
                 record = self.records[current_id]
-                chain.append({
-                    "data_id": record.data_id,
-                    "name": record.name,
-                    "origin": record.origin.source_name,
-                    "timestamp": record.created_at,
-                    "transformations": len(record.transformations),
-                })
+                chain.append(
+                    {
+                        "data_id": record.data_id,
+                        "name": record.name,
+                        "origin": record.origin.source_name,
+                        "timestamp": record.created_at,
+                        "transformations": len(record.transformations),
+                    }
+                )
 
                 # Add parents
                 for pid in record.parent_ids:
@@ -530,15 +539,13 @@ class DataLineageTracker:
 
     def find_by_tag(self, tag: str) -> List[DataLineageRecord]:
         """Find all records with a specific tag."""
-        return [
-            record for record in self.records.values()
-            if tag in record.tags
-        ]
+        return [record for record in self.records.values() if tag in record.tags]
 
     def find_by_source(self, source_name: str) -> List[DataLineageRecord]:
         """Find all records from a specific source."""
         return [
-            record for record in self.records.values()
+            record
+            for record in self.records.values()
             if record.origin.source_name == source_name
         ]
 
@@ -620,8 +627,12 @@ class DataLineageTracker:
             "total_records": len(self.records),
             "source_breakdown": source_counts,
             "type_breakdown": type_counts,
-            "total_transformations": sum(len(r.transformations) for r in self.records.values()),
-            "total_size_mb": sum(r.size_bytes for r in self.records.values()) / 1024 / 1024,
+            "total_transformations": sum(
+                len(r.transformations) for r in self.records.values()
+            ),
+            "total_size_mb": sum(r.size_bytes for r in self.records.values())
+            / 1024
+            / 1024,
         }
 
 

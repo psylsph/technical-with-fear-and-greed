@@ -4,7 +4,6 @@ Tests for technical indicators module.
 
 import pytest
 import pandas as pd
-import numpy as np
 
 from src.indicators import (
     calculate_support_resistance,
@@ -36,12 +35,81 @@ class TestCalculateSupportResistance:
     def test_basic_calculation(self):
         """Test basic support/resistance calculation."""
         # Create price data with clear swings
-        close = pd.Series([100, 105, 100, 105, 100, 105, 100, 105, 100, 105,
-                          110, 108, 106, 104, 102, 100, 98, 96, 94, 92, 90])
-        high = pd.Series([102, 107, 102, 107, 102, 107, 102, 107, 102, 107,
-                         112, 110, 108, 106, 104, 102, 100, 98, 96, 94, 92])
-        low = pd.Series([98, 103, 98, 103, 98, 103, 98, 103, 98, 103,
-                        108, 106, 104, 102, 100, 98, 96, 94, 92, 90, 88])
+        close = pd.Series(
+            [
+                100,
+                105,
+                100,
+                105,
+                100,
+                105,
+                100,
+                105,
+                100,
+                105,
+                110,
+                108,
+                106,
+                104,
+                102,
+                100,
+                98,
+                96,
+                94,
+                92,
+                90,
+            ]
+        )
+        high = pd.Series(
+            [
+                102,
+                107,
+                102,
+                107,
+                102,
+                107,
+                102,
+                107,
+                102,
+                107,
+                112,
+                110,
+                108,
+                106,
+                104,
+                102,
+                100,
+                98,
+                96,
+                94,
+                92,
+            ]
+        )
+        low = pd.Series(
+            [
+                98,
+                103,
+                98,
+                103,
+                98,
+                103,
+                98,
+                103,
+                98,
+                103,
+                108,
+                106,
+                104,
+                102,
+                100,
+                98,
+                96,
+                94,
+                92,
+                90,
+                88,
+            ]
+        )
 
         result = calculate_support_resistance(high, low, close, lookback=20)
 
@@ -55,12 +123,81 @@ class TestCalculateSupportResistance:
     def test_support_levels_below_price(self):
         """Test that support levels are below current price."""
         # Create trending down data
-        close = pd.Series([110, 108, 106, 104, 102, 100, 98, 96, 94, 92,
-                          90, 88, 86, 84, 82, 80, 78, 76, 74, 72, 70])
-        high = pd.Series([112, 110, 108, 106, 104, 102, 100, 98, 96, 94,
-                         92, 90, 88, 86, 84, 82, 80, 78, 76, 74, 72])
-        low = pd.Series([108, 106, 104, 102, 100, 98, 96, 94, 92, 90,
-                        88, 86, 84, 82, 80, 78, 76, 74, 72, 70, 68])
+        close = pd.Series(
+            [
+                110,
+                108,
+                106,
+                104,
+                102,
+                100,
+                98,
+                96,
+                94,
+                92,
+                90,
+                88,
+                86,
+                84,
+                82,
+                80,
+                78,
+                76,
+                74,
+                72,
+                70,
+            ]
+        )
+        high = pd.Series(
+            [
+                112,
+                110,
+                108,
+                106,
+                104,
+                102,
+                100,
+                98,
+                96,
+                94,
+                92,
+                90,
+                88,
+                86,
+                84,
+                82,
+                80,
+                78,
+                76,
+                74,
+                72,
+            ]
+        )
+        low = pd.Series(
+            [
+                108,
+                106,
+                104,
+                102,
+                100,
+                98,
+                96,
+                94,
+                92,
+                90,
+                88,
+                86,
+                84,
+                82,
+                80,
+                78,
+                76,
+                74,
+                72,
+                70,
+                68,
+            ]
+        )
 
         result = calculate_support_resistance(high, low, close, lookback=20)
 
@@ -71,12 +208,81 @@ class TestCalculateSupportResistance:
     def test_resistance_levels_above_price(self):
         """Test that resistance levels are above current price."""
         # Create trending up data
-        close = pd.Series([70, 72, 74, 76, 78, 80, 82, 84, 86, 88,
-                          90, 92, 94, 96, 98, 100, 102, 104, 106, 108, 110])
-        high = pd.Series([72, 74, 76, 78, 80, 82, 84, 86, 88, 90,
-                         92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112])
-        low = pd.Series([68, 70, 72, 74, 76, 78, 80, 82, 84, 86,
-                        88, 90, 92, 94, 96, 98, 100, 102, 104, 106, 108])
+        close = pd.Series(
+            [
+                70,
+                72,
+                74,
+                76,
+                78,
+                80,
+                82,
+                84,
+                86,
+                88,
+                90,
+                92,
+                94,
+                96,
+                98,
+                100,
+                102,
+                104,
+                106,
+                108,
+                110,
+            ]
+        )
+        high = pd.Series(
+            [
+                72,
+                74,
+                76,
+                78,
+                80,
+                82,
+                84,
+                86,
+                88,
+                90,
+                92,
+                94,
+                96,
+                98,
+                100,
+                102,
+                104,
+                106,
+                108,
+                110,
+                112,
+            ]
+        )
+        low = pd.Series(
+            [
+                68,
+                70,
+                72,
+                74,
+                76,
+                78,
+                80,
+                82,
+                84,
+                86,
+                88,
+                90,
+                92,
+                94,
+                96,
+                98,
+                100,
+                102,
+                104,
+                106,
+                108,
+            ]
+        )
 
         result = calculate_support_resistance(high, low, close, lookback=20)
 
@@ -88,12 +294,56 @@ class TestCalculateSupportResistance:
         """Test that nearby levels are clustered together."""
         # Create data with levels close to each other
         close = pd.Series([100] * 21)
-        high = pd.Series([105, 105.1, 104.9, 105.2, 104.8, 105.3, 104.7, 105,
-                         104.5, 105.5, 105, 104.3, 105.7, 104, 105.8, 104.2,
-                         105.4, 104.4, 105.6, 104.1, 105.9])
-        low = pd.Series([95, 95.1, 94.9, 95.2, 94.8, 95.3, 94.7, 95,
-                        94.5, 95.5, 95, 94.3, 95.7, 94, 95.8, 94.2,
-                        95.4, 94.4, 95.6, 94.1, 95.9])
+        high = pd.Series(
+            [
+                105,
+                105.1,
+                104.9,
+                105.2,
+                104.8,
+                105.3,
+                104.7,
+                105,
+                104.5,
+                105.5,
+                105,
+                104.3,
+                105.7,
+                104,
+                105.8,
+                104.2,
+                105.4,
+                104.4,
+                105.6,
+                104.1,
+                105.9,
+            ]
+        )
+        low = pd.Series(
+            [
+                95,
+                95.1,
+                94.9,
+                95.2,
+                94.8,
+                95.3,
+                94.7,
+                95,
+                94.5,
+                95.5,
+                95,
+                94.3,
+                95.7,
+                94,
+                95.8,
+                94.2,
+                95.4,
+                94.4,
+                95.6,
+                94.1,
+                95.9,
+            ]
+        )
 
         result = calculate_support_resistance(high, low, close, lookback=20)
 
@@ -304,8 +554,30 @@ class TestCalculateRSI:
 
     def test_rsi_range(self):
         """Test that RSI values are between 0 and 100."""
-        close = pd.Series([100, 102, 104, 106, 108, 110, 112, 114, 116, 118,
-                          120, 122, 124, 126, 128, 130, 132, 134, 136, 138])
+        close = pd.Series(
+            [
+                100,
+                102,
+                104,
+                106,
+                108,
+                110,
+                112,
+                114,
+                116,
+                118,
+                120,
+                122,
+                124,
+                126,
+                128,
+                130,
+                132,
+                134,
+                136,
+                138,
+            ]
+        )
 
         rsi = calculate_rsi(close)
 

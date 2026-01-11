@@ -19,6 +19,7 @@ if env_path.exists():
 
 from src.telegram_bot import get_telegram_bot
 
+
 def main():
     print("=" * 60)
     print("Telegram Bot Test")
@@ -61,8 +62,18 @@ def main():
                 }
             ],
             "recent_trades": [
-                {"side": "buy", "qty": 1.5, "price": 3200.00, "time": "2026-01-11 10:30:00"},
-                {"side": "sell", "qty": 0.5, "price": 3250.00, "time": "2026-01-11 12:15:00"},
+                {
+                    "side": "buy",
+                    "qty": 1.5,
+                    "price": 3200.00,
+                    "time": "2026-01-11 10:30:00",
+                },
+                {
+                    "side": "sell",
+                    "qty": 0.5,
+                    "price": 3250.00,
+                    "time": "2026-01-11 12:15:00",
+                },
             ],
         }
 
@@ -82,7 +93,9 @@ def main():
 
     # Test sending a message first
     print("\n📤 Testing message sending...")
-    result = bot.send_notification("🧪 *Test Message*\n\nThis is a test from the Telegram bot test script.")
+    result = bot.send_notification(
+        "🧪 *Test Message*\n\nThis is a test from the Telegram bot test script."
+    )
     if result:
         print("✅ Test message queued successfully!")
         print("   Check your Telegram bot for the test message.")
@@ -95,7 +108,7 @@ def main():
         status = bot._status_callback()
         print("✅ Status callback works!")
         print(f"   Account equity: ${status.get('account', {}).get('equity', 0):,.2f}")
-        positions = status.get('positions', [])
+        positions = status.get("positions", [])
         print(f"   Positions: {len(positions)}")
     else:
         print("❌ Status callback not configured!")
@@ -110,6 +123,7 @@ def main():
 
             # Keep the main thread alive for 30 seconds
             import time
+
             start_time = time.time()
             while bot._running and (time.time() - start_time) < 30:
                 time.sleep(1)
@@ -126,6 +140,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Error during bot operation: {e}")
         bot.stop()
+
 
 if __name__ == "__main__":
     main()

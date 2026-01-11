@@ -13,15 +13,16 @@ Features:
 import time
 import threading
 from collections import deque, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, Optional
 import functools
 
 
 class Priority(Enum):
     """Request priority levels."""
+
     LOW = 1
     NORMAL = 2
     HIGH = 3
@@ -31,6 +32,7 @@ class Priority(Enum):
 @dataclass
 class RateLimit:
     """Rate limit configuration."""
+
     requests_per_minute: int = 60
     requests_per_second: int = 5
     burst_allowed: int = 10  # Allow short bursts
@@ -39,6 +41,7 @@ class RateLimit:
 @dataclass
 class RateLimitStats:
     """Rate limit statistics."""
+
     total_requests: int = 0
     throttled_requests: int = 0
     rate_limit_errors: int = 0
@@ -290,9 +293,7 @@ class RateLimitedAPI:
         self._rate_limiter = RateLimiter()
         self._rate_limiter.set_limit(api_name, rate_limit)
 
-    def rate_limit_method(
-        self, priority: Priority = Priority.NORMAL
-    ) -> Callable:
+    def rate_limit_method(self, priority: Priority = Priority.NORMAL) -> Callable:
         """Decorator for rate limiting methods."""
 
         def decorator(func: Callable) -> Callable:
