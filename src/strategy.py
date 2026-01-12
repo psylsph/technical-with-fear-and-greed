@@ -172,7 +172,14 @@ def generate_signal(
     # Adjust thresholds based on market regime
     if fgi_trend == "bull":
         # In bull markets, be more conservative (wait for extreme fear)
-        effective_fear_threshold = fear_entry_threshold - 5  # 25
+        # BUT only if we are not already deep in fear territory
+        if fgi_val > 40:
+            effective_fear_threshold = fear_entry_threshold - 5  # 25
+        else:
+            # If we are already in fear/extreme fear, don't lower the bar
+            # A rising FGI in the fear zone is a recovery - good to buy
+            effective_fear_threshold = fear_entry_threshold
+            
         effective_greed_threshold = greed_exit_threshold + 5  # 75
     elif fgi_trend == "bear":
         # In bear markets, be more aggressive (capital preservation)
