@@ -721,6 +721,7 @@ def send_multi_asset_trade_notification(
     price: float,
     reason: str = "",
     indicators: Optional[Dict[str, Any]] = None,
+    **kwargs,
 ) -> bool:
     """Convenience function to send multi-asset trade notification (alias to standard trade notification)."""
     return send_trade_notification(symbol, action, quantity, price, reason, indicators)

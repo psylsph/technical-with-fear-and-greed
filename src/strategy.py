@@ -214,20 +214,24 @@ def generate_signal(
     ):
         try:
             # Calculate ADX for trend strength
-            adx = calculate_adx(high, low, close, period=14)
-            if len(adx) >= 14:
-                current_adx = adx.iloc[-1]
-                # Strong trend if ADX > threshold (typically 25-30)
-                strong_trend = current_adx > adx_threshold
+            if len(close) >= 14:
+                adx = calculate_adx(high, low, close, period=14)
+                if len(adx) >= 14:
+                    current_adx = adx.iloc[-1]
+                    # Strong trend if ADX > threshold (typically 25-30)
+                    strong_trend = current_adx > adx_threshold
 
-                # Price momentum: Recent uptrend
-                recent_high = close.iloc[-20:].max()
-                recent_low = close.iloc[-20:].min()
-                price_momentum = (latest_close - recent_low) / (
-                    recent_high - recent_low
-                ) > 0.5  # In upper 50% of range
+                    # Price momentum: Recent uptrend
+                    recent_high = close.iloc[-20:].max()
+                    recent_low = close.iloc[-20:].min()
+                    price_momentum = (latest_close - recent_low) / (
+                        recent_high - recent_low
+                    ) > 0.5  # In upper 50% of range
 
-                trend_following_signal = strong_trend and price_momentum
+                    trend_following_signal = strong_trend and price_momentum
+            else:
+                 # Fallback for short history (e.g. live single point): just check if price is positive
+                 trend_following_signal = True
         except Exception:
             # Fallback if ADX calculation fails
             trend_following_signal = False

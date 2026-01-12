@@ -1073,6 +1073,10 @@ class ExchangeMultiAssetTradingEngine:
         if signal:
             signal["symbol"] = symbol
             signal["current_price"] = current_price
+            # Map 'signal' from strategy to 'action' for trading engine
+            signal["action"] = signal.get("signal", "hold")
+            
+        print(f"DEBUG: Signal for {symbol}: {signal.get('action') if signal else 'None'} (Price: ${current_price:.2f})")
         
         return signal
     
@@ -1255,7 +1259,7 @@ async def run_exchange_live_trading(
             symbols=symbols,
             interval_seconds=interval_seconds,
             max_iterations=max_iterations,
-            is_live=not paper,
+            is_live=True,  # Always live execution when using this runner, even for paper exchange
         )
         
     except ImportError as e:

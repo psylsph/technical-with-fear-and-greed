@@ -622,12 +622,13 @@ class AlpacaExchange(ExchangeInterface):
     def _map_order_status(self, alpaca_status: OrderStatus) -> str:
         """Map Alpaca order status to standard status."""
         status_mapping = {
-            OrderStatus.PENDING: "pending",
+            OrderStatus.PENDING_NEW: "pending",
+            OrderStatus.ACCEPTED: "pending",
             OrderStatus.NEW: "open",
             OrderStatus.PARTIALLY_FILLED: "partially_filled",
             OrderStatus.FILLED: "filled",
             OrderStatus.DONE_FOR_DAY: "done_for_day",
-            OrderStatus.CANCELLED: "cancelled",
+            OrderStatus.CANCELED: "cancelled",
             OrderStatus.EXPIRED: "expired",
             OrderStatus.REJECTED: "rejected",
         }
