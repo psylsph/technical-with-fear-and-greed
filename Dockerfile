@@ -24,4 +24,4 @@ RUN useradd -m -u 1000 trader && \
 USER trader
 
 # Default command with test parameter
-CMD ["python", "main.py", "--live", "-q"]
+CMD ["python", "main.py", "--live", "--multi-asset", "--assets", "ETH-USD,BTC-USD,XRP-USD"]
