@@ -23,5 +23,8 @@ RUN useradd -m -u 1000 trader && \
     chown -R trader:trader /app
 USER trader
 
+# Fix for Numba caching in read-only/container environments
+ENV NUMBA_CACHE_DIR=/tmp
+
 # Default command with test parameter
 CMD ["python", "main.py", "--live", "--multi-asset", "--assets", "ETH-USD,BTC-USD,XRP-USD,SOL-USD,XMR-USD"]
