@@ -844,6 +844,7 @@ class ExchangeMultiAssetTradingEngine:
                                     "unrealized_pnl_pct": pos["pnl_pct"],
                                 }
                                 for pos in summary.get("positions", [])
+                                if pos["quantity"] != 0  # Only show non-zero positions
                             ],
                             "recent_trades": self._trade_history[-10:],
                         }
@@ -1051,7 +1052,7 @@ class ExchangeMultiAssetTradingEngine:
         )
         
         # Get FGI data
-        fgi_df = data_manager.get_fgi_data()
+        fgi_df = data_manager.fetch_fgi_data()
         if fgi_df is None or fgi_df.empty:
             return None
         
@@ -1121,7 +1122,7 @@ class ExchangeMultiAssetTradingEngine:
                         continue
                     
                     action = signal.get("action")
-                    if action == "hold":
+                    if not action or action.lower() == "hold":
                         continue
                     
                     # Get asset config for position sizing

@@ -52,13 +52,17 @@ try:
     from alpaca.trading.client import TradingClient
     from alpaca.trading.enums import OrderSide as AlpacaOrderSide
     from alpaca.trading.enums import TimeInForce as AlpacaTimeInForce
+    from alpaca.trading.enums import OrderStatus
     from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, StopOrderRequest
     from alpaca.trading.requests import StopLimitOrderRequest
-    from alpaca.common.types import OrderStatus
+    from alpaca.data.historical import CryptoHistoricalDataClient
+    from alpaca.data.requests import CryptoLatestQuoteRequest
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
     logger.warning("Alpaca SDK not available. Install with: pip install alpaca-py")
+    # Define dummy placeholders to prevent NameError in type hints
+    OrderStatus = "OrderStatus"
 
 
 class AlpacaExchange(ExchangeInterface):
@@ -100,6 +104,7 @@ class AlpacaExchange(ExchangeInterface):
         super().__init__(api_key, secret_key, paper, **kwargs)
         
         self._client: Optional[TradingClient] = None
+        self._data_client: Optional[CryptoHistoricalDataClient] = None
         self._account_id: Optional[str] = None
         
         # Determine base URL based on paper mode
@@ -125,12 +130,18 @@ class AlpacaExchange(ExchangeInterface):
                 paper=self.paper,
             )
             
+            # Initialize data client (doesn't need auth for free tier usually, but better to be safe if pro)
+            self._data_client = CryptoHistoricalDataClient(
+                api_key=self.api_key,
+                secret_key=self.secret_key
+            )
+            
             # Test connection by getting account
             account = self._client.get_account()
             self._account_id = account.id
             self._connected = True
             
-            logger.info(f"Connected to Alpaca (paper={self.paper}): account={self._account_id[:8]}...")
+            logger.info(f"Connected to Alpaca (paper={self.paper}): account={str(self._account_id)[:8]}...")
             return True
             
         except Exception as e:
@@ -171,7 +182,7 @@ class AlpacaExchange(ExchangeInterface):
                 cash=float(alpaca_account.cash),
                 portfolio_value=float(alpaca_account.portfolio_value),
                 buying_power=float(alpaca_account.buying_power),
-                day_trades_remaining=int(alpaca_account.daytrades_remaining) if alpaca_account.daytrades_remaining else None,
+                day_trades_remaining=int(getattr(alpaca_account, 'daytrades_remaining', 0) or 0) if getattr(alpaca_account, 'daytrades_remaining', None) else None,
                 pattern_day_trader=alpaca_account.pattern_day_trader,
             )
             
@@ -515,10 +526,19 @@ class AlpacaExchange(ExchangeInterface):
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price for a symbol."""
         try:
-            alpaca_symbol = self.normalize_symbol(symbol)
+            alpaca_symbol = self.normalize_symbol(symbol, for_data=True)
             
-            # Use the trading client to get latest quote
-            quote = self._client.get_latest_crypto_quote(alpaca_symbol)
+            if not self._data_client:
+                # Lazy initialization if not connected
+                self._data_client = CryptoHistoricalDataClient(
+                    api_key=self.api_key,
+                    secret_key=self.secret_key
+                )
+            
+            # Use the data client to get latest quote
+            request_params = CryptoLatestQuoteRequest(symbol_or_symbols=alpaca_symbol)
+            quotes = self._data_client.get_crypto_latest_quote(request_params)
+            quote = quotes.get(alpaca_symbol)
             
             if quote:
                 # Use ask price for buying, bid price for selling
@@ -540,19 +560,48 @@ class AlpacaExchange(ExchangeInterface):
         """Get current prices for multiple symbols."""
         prices = {}
         
-        for symbol in symbols:
-            price = self.get_current_price(symbol)
-            if price is not None:
-                prices[symbol] = price
-        
+        try:
+            alpaca_symbols = [self.normalize_symbol(s, for_data=True) for s in symbols]
+            
+            if not self._data_client:
+                self._data_client = CryptoHistoricalDataClient(
+                    api_key=self.api_key,
+                    secret_key=self.secret_key
+                )
+                
+            request_params = CryptoLatestQuoteRequest(symbol_or_symbols=alpaca_symbols)
+            quotes = self._data_client.get_crypto_latest_quote(request_params)
+            
+            for symbol in symbols:
+                alpaca_symbol = self.normalize_symbol(symbol, for_data=True)
+                quote = quotes.get(alpaca_symbol)
+                
+                if quote:
+                    price = None
+                    if quote.ask_price and quote.bid_price:
+                        price = (float(quote.ask_price) + float(quote.bid_price)) / 2
+                    elif quote.ask_price:
+                        price = float(quote.ask_price)
+                    elif quote.bid_price:
+                        price = float(quote.bid_price)
+                        
+                    if price is not None:
+                        prices[symbol] = price
+                        
+        except Exception as e:
+            logger.warning(f"Failed to get prices for {symbols}: {e}")
+            
         return prices
     
-    def normalize_symbol(self, symbol: str) -> str:
+    def normalize_symbol(self, symbol: str, for_data: bool = False) -> str:
         """Convert standard symbol to Alpaca format.
         
-        Alpaca uses format: BTCUSD (no slash, no dash)
+        Alpaca uses format: BTCUSD (no slash, no dash) for Trading API
+        Alpaca uses format: BTC/USD (with slash) for Data API
         Standard format: BTC-USD (with dash)
         """
+        if for_data:
+            return symbol.replace("-", "/")
         return symbol.replace("-", "").replace("/", "")
     
     def denormalize_symbol(self, symbol: str) -> str:

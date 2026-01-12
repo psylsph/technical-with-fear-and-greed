@@ -209,7 +209,8 @@ def generate_signal(
         high is not None
         and low is not None
         and len(close) >= 50
-        and fgi_trend == "bull"
+        # Relaxed condition: Allow momentum signals in sideways markets too, or if ADX is very high
+        and (fgi_trend == "bull" or fgi_trend == "sideways")
     ):
         try:
             # Calculate ADX for trend strength

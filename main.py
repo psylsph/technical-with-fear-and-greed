@@ -19,7 +19,7 @@ if env_path.exists():
                 key, value = line.split("=", 1)
                 os.environ.setdefault(key.strip(), value.strip())
 
-from src.config import (
+from src.config import (  # noqa: E402
     BEST_PARAMS,
     END_DATE,
     GRANULARITY_TO_FREQ,
@@ -29,17 +29,17 @@ from src.config import (
     TAKER_FEE,
     TOP_CRYPTOCURRENCIES,
 )
-from src.data.data_fetchers import (
+from src.data.data_fetchers import (  # noqa: E402
     calculate_higher_tf_indicators,
     fetch_fear_greed_index,
     fetch_unified_price_data,
     get_current_price,
 )
-from src.indicators import calculate_adx
-from src.ml.ml_model import train_ml_model
-from src.strategy import run_strategy, generate_signal
-from src.multi_asset_config import asset_registry, get_asset_config
-from src.multi_asset_trading import trading_engine, execute_multi_asset_trades
+from src.indicators import calculate_adx  # noqa: E402
+from src.ml.ml_model import train_ml_model  # noqa: E402
+from src.strategy import run_strategy, generate_signal  # noqa: E402
+from src.multi_asset_config import asset_registry, get_asset_config  # noqa: E402
+from src.multi_asset_trading import trading_engine, execute_multi_asset_trades  # noqa: E402
 
 
 def main():
@@ -332,18 +332,29 @@ def main():
             print("Press Ctrl+C to stop\n")
             
             try:
+
                 import asyncio
-                from src.multi_asset_trading import monitor_assets_async
+                from src.multi_asset_trading import run_exchange_live_trading
                 
                 print(f"DEBUG: Starting async monitoring for {live_assets}")
                 print("DEBUG: Interval: 300 seconds, Live: True")
                 
+                # Get API keys from environment
+                api_key = os.environ.get("ALPACA_API_KEY")
+                secret_key = os.environ.get("ALPACA_SECRET_KEY")
+                is_paper = os.environ.get("ALPACA_PAPER", "True").lower() == "true"
+                
+                print(f"DEBUG: Using Exchange: Alpaca (Paper={is_paper})")
+                
                 # Run async monitoring loop with live trading
-                asyncio.run(monitor_assets_async(
+                asyncio.run(run_exchange_live_trading(
                     symbols=live_assets,
+                    exchange_type="alpaca",
+                    api_key=api_key,
+                    secret_key=secret_key,
+                    paper=is_paper,
                     interval_seconds=300,  # Check every 5 minutes
                     max_iterations=None,  # Run indefinitely
-                    is_live=True,  # Execute live trades
                 ))
                 
                 print("DEBUG: Async monitoring completed")
@@ -933,7 +944,7 @@ def run_walk_forward_analysis(fgi_df: pd.DataFrame, use_ml_predictions: bool = F
         )
 
         # Train data
-        train_close = close.iloc[train_start:train_end]
+        # train_close = close.iloc[train_start:train_end]
         train_fgi = fgi_aligned.iloc[train_start:train_end]
 
         # Test data

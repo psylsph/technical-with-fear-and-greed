@@ -601,6 +601,7 @@ Use /help to see available commands.
 
             # Add handlers for all updates
             from telegram.ext import MessageHandler, filters
+            from telegram.error import Conflict
 
             self.application.add_handler(
                 MessageHandler(filters.ALL, debug_all_updates), group=0
@@ -628,6 +629,10 @@ Use /help to see available commands.
             while self._running:
                 await asyncio.sleep(1)
 
+        except Conflict:
+            print("\n❌ Telegram Conflict Error: Another instance of the bot is running.")
+            print("   Please stop the other instance (e.g., Docker container) and try again.\n")
+            self._running = False
         except Exception as e:
             print(f"Telegram: Bot error: {e}")
             import traceback
