@@ -17,10 +17,10 @@ import requests
 import yfinance as yf
 import vectorbt as vbt
 
+from ..config import CACHE_DIR, CDP_KEY_FILE, GRANULARITY_TO_SECONDS
+
 # Suppress future warning about downcasting
 pd.set_option("future.no_silent_downcasting", True)
-
-from ..config import CACHE_DIR, CDP_KEY_FILE, GRANULARITY_TO_SECONDS
 
 # News sentiment API endpoints (example implementations)
 CRYPTO_NEWS_APIS = {

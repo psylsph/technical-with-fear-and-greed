@@ -814,7 +814,7 @@ def log_trade(
             "fgi": convert_value(indicators.get("fgi", 0)),
             "rsi": convert_value(indicators.get("rsi", 0)),
             "ml_pred": convert_value(indicators.get("ml_pred", 0)),
-            "order_id": order_id,
+            "order_id": str(order_id) if order_id else None,
         }
         log_file = os.path.join(PROJECT_ROOT, "trade_log.json")
         logs = []

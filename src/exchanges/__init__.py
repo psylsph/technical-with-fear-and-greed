@@ -281,6 +281,18 @@ class ExchangeInterface(ABC):
         pass
     
     @abstractmethod
+    def get_closed_orders(self, limit: int = 10) -> List[Order]:
+        """Get recently closed orders.
+        
+        Args:
+            limit: Maximum number of orders to return
+            
+        Returns:
+            List of Order objects for recently closed orders
+        """
+        pass
+    
+    @abstractmethod
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current market price for a symbol.
         

@@ -248,6 +248,38 @@ class PaperExchange(ExchangeInterface):
     
     def get_open_orders(self) -> List[Order]:
         return list(self._orders.values())
+
+    def get_closed_orders(self, limit: int = 10) -> List[Order]:
+        """Get recently closed orders (from trade history)."""
+        orders = []
+        # Sort trades by timestamp descending
+        sorted_trades = sorted(
+            self._trade_history, 
+            key=lambda x: x.get("timestamp", ""), 
+            reverse=True
+        )[:limit]
+        
+        for trade in sorted_trades:
+            # Create order from trade record
+            timestamp = datetime.fromisoformat(trade["timestamp"]) if isinstance(trade["timestamp"], str) else trade["timestamp"]
+            side = OrderSide.BUY if trade["side"].lower() == "buy" else OrderSide.SELL
+            
+            order = Order(
+                id=trade.get("order_id", str(uuid.uuid4())),
+                symbol=trade["symbol"],
+                side=side,
+                order_type=OrderType.MARKET, # Assume market for paper trades
+                quantity=trade["quantity"],
+                filled_quantity=trade["quantity"],
+                price=trade["price"],
+                status="filled",
+                created_at=timestamp,
+                updated_at=timestamp,
+                filled_at=timestamp,
+            )
+            orders.append(order)
+            
+        return orders
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         if symbol in self._price_data:

@@ -31,12 +31,14 @@ try:
         OrderSide,
         OrderType,
         TimeInForce,
+        OrderRequest,
     )
     EXCHANGES_AVAILABLE = True
 except ImportError:
     EXCHANGES_AVAILABLE = False
     get_exchange = None
     ExchangeInterface = None
+    OrderRequest = None
 
 # Telegram integration
 try:
@@ -334,8 +336,6 @@ class MultiAssetTradingEngine:
         is_live: bool = False,
     ) -> Tuple[bool, str, float]:
         """Determine if we should trade an asset."""
-        current_price = signal_info.get("current_price", 0)
-        
         if is_live:
             # Live trading logic
             current_position = self.portfolio.positions.get(symbol, 0)
@@ -629,6 +629,7 @@ async def monitor_assets_async(
                         "recent_trades": [
                             {
                                 "side": t["action"],
+                                "symbol": t["symbol"],
                                 "qty": t["quantity"],
                                 "price": t["price"],
                                 "time": t["timestamp"]
@@ -791,6 +792,32 @@ class ExchangeMultiAssetTradingEngine:
         # Portfolio state
         self._trade_history: List[Dict] = []
         
+        # Load recent trades from exchange
+        try:
+            print("Syncing trade history from exchange...")
+            recent_orders = self.exchange.get_closed_orders(limit=20)
+            for order in recent_orders:
+                # Convert order to trade history format
+                if order.status == "filled":
+                    self._trade_history.append({
+                        "order_id": order.id,
+                        "symbol": order.symbol,
+                        "action": "buy" if order.side == OrderSide.BUY else "sell",
+                        "quantity": order.filled_quantity,
+                        "price": order.price,
+                        "timestamp": str(order.filled_at or order.updated_at or datetime.now().isoformat()),
+                        # "value": order.filled_quantity * order.price  # Optional
+                    })
+            
+            # Sort by timestamp (oldest first for appending new ones, or newest first for display?)
+            # Usually logs are appended, so we keep them in chronological order
+            self._trade_history.sort(key=lambda x: x.get("timestamp", ""))
+            print(f"Loaded {len(self._trade_history)} recent trades from exchange")
+                
+        except Exception as e:
+            print(f"Failed to load recent trades from exchange: {e}")
+
+        
         # Initialize Telegram bot
         self._telegram_bot = None
         if TELEGRAM_AVAILABLE and get_telegram_bot:
@@ -864,7 +891,7 @@ class ExchangeMultiAssetTradingEngine:
             })
         
         # Calculate totals
-        total_position_value = sum(pos.market_value for pos in positions)
+        # Calculate totals
         total_pnl = sum(pos.unrealized_pnl for pos in positions)
         initial_capital = self.initial_capital
         

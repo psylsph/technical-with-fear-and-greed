@@ -439,7 +439,6 @@ def _create_asset_config_from_yaml(symbol: str, yaml_config: Dict) -> AssetConfi
     """
     trading = yaml_config.get('trading', {})
     risk = yaml_config.get('risk', {})
-    training = yaml_config.get('training', {})
 
     trading_params = AssetTradingParams(
         rsi_oversold=trading.get('rsi_oversold', 30.0),

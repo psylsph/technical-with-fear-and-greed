@@ -434,34 +434,83 @@ class AlpacaExchange(ExchangeInterface):
             alpaca_orders = self._client.get_orders(status="open")
             
             for alpaca_order in alpaca_orders:
-                symbol = self.denormalize_symbol(alpaca_order.symbol)
-                
-                # Determine side
-                if alpaca_order.side == AlpacaOrderSide.BUY:
-                    side = OrderSide.BUY
-                else:
-                    side = OrderSide.SELL
-                
-                order = Order(
-                    id=alpaca_order.id,
-                    symbol=symbol,
-                    side=side,
-                    order_type=OrderType.MARKET,  # Simplified
-                    quantity=float(alpaca_order.qty),
-                    filled_quantity=float(alpaca_order.filled_qty) if alpaca_order.filled_qty else 0.0,
-                    price=float(alpaca_order.limit_price) if alpaca_order.limit_price else 0.0,
-                    status=self._map_order_status(alpaca_order.status),
-                    created_at=alpaca_order.created_at,
-                    updated_at=alpaca_order.updated_at,
-                    filled_at=alpaca_order.filled_at or None,
-                )
-                orders.append(order)
+                orders.append(self._convert_alpaca_order(alpaca_order))
             
             return orders
             
         except Exception as e:
             logger.error(f"Failed to get open orders: {e}")
             raise ConnectionError(f"Failed to get open orders: {e}")
+
+    def get_closed_orders(self, limit: int = 10) -> List[Order]:
+        """Get recently closed orders."""
+        if not self._client:
+            raise ConnectionError("Not connected to Alpaca")
+        
+        try:
+            from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
+            
+            request = GetOrdersRequest(
+                status=QueryOrderStatus.CLOSED,
+                limit=limit,
+                nested=True  # useful for finding legs of multi-leg orders if needed
+            )
+            
+            alpaca_orders = self._client.get_orders(filter=request)
+            orders = []
+            
+            for alpaca_order in alpaca_orders:
+                try:
+                    orders.append(self._convert_alpaca_order(alpaca_order))
+                except Exception as e:
+                    logger.warning(f"Skipping order conversion error: {e}")
+                    continue
+            
+            return orders
+            
+        except Exception as e:
+            logger.error(f"Failed to get closed orders: {e}")
+            raise ConnectionError(f"Failed to get closed orders: {e}")
+
+    def _convert_alpaca_order(self, alpaca_order) -> Order:
+        """Helper to convert Alpaca order to internal Order."""
+        symbol = self.denormalize_symbol(alpaca_order.symbol)
+        
+        # Determine side
+        if alpaca_order.side == AlpacaOrderSide.BUY:
+            side = OrderSide.BUY
+        else:
+            side = OrderSide.SELL
+        
+        # Determine order type
+        order_type_map = {
+            "market": OrderType.MARKET,
+            "limit": OrderType.LIMIT,
+            "stop": OrderType.STOP,
+            "stop_limit": OrderType.STOP_LIMIT
+        }
+        order_type = order_type_map.get(str(alpaca_order.order_type), OrderType.MARKET)
+        
+        price = 0.0
+        if alpaca_order.filled_avg_price:
+             price = float(alpaca_order.filled_avg_price)
+        elif alpaca_order.limit_price:
+             price = float(alpaca_order.limit_price)
+
+        return Order(
+            id=str(alpaca_order.id),
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            quantity=float(alpaca_order.qty) if alpaca_order.qty else 0.0,
+            filled_quantity=float(alpaca_order.filled_qty) if alpaca_order.filled_qty else 0.0,
+            price=price,
+            status=self._map_order_status(alpaca_order.status),
+            created_at=alpaca_order.created_at,
+            updated_at=alpaca_order.updated_at,
+            filled_at=alpaca_order.filled_at or None,
+        )
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price for a symbol."""

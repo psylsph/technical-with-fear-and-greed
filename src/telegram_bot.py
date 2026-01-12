@@ -336,7 +336,8 @@ class TelegramBot:
                     qty = trade.get("qty", 0)
                     price = trade.get("price", 0)
                     time_str = trade.get("time", "")
-                    message += f"  {action} {qty:.6f} @ ${price:,.2f} - {time_str}\n"
+                    symbol = trade.get("symbol", "N/A")
+                    message += f"  {action} {qty:.6f} {symbol} @ ${price:,.2f} - {time_str}\n"
 
             message += f"\n*Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
@@ -477,7 +478,9 @@ Use /help to see available commands.
             price = trade.get("price", 0)
             time_str = trade.get("time", "")
 
-            message += f"{emoji} *{action}* {qty:.6f} @ ${price:,.2f}\n"
+            symbol = trade.get("symbol", "N/A")
+
+            message += f"{emoji} *{action}* {qty:.6f} {symbol} @ ${price:,.2f}\n"
             message += f"  {time_str}\n\n"
 
         await update.message.reply_text(message, parse_mode="Markdown")
