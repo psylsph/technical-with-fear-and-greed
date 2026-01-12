@@ -25,6 +25,7 @@ import threading
 try:
     from telegram import Update
     from telegram.ext import Application, CommandHandler, ContextTypes
+
     TELEGRAM_AVAILABLE = True
 except ImportError:
     TELEGRAM_AVAILABLE = False
@@ -55,7 +56,9 @@ class TelegramBot:
                 print("Telegram: python-telegram-bot not installed")
                 print("  Install with: pip install python-telegram-bot")
             else:
-                print("Telegram: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set in .env")
+                print(
+                    "Telegram: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set in .env"
+                )
 
     def set_status_callback(self, callback: callable):
         """Set the callback function for getting trading status."""
@@ -69,11 +72,7 @@ class TelegramBot:
         """Check if Telegram bot is properly configured."""
         return self.enabled
 
-    def send_notification(
-        self,
-        message: str,
-        parse_mode: str = "Markdown"
-    ) -> bool:
+    def send_notification(self, message: str, parse_mode: str = "Markdown") -> bool:
         """Send a notification message to the configured chat.
 
         Args:
@@ -98,9 +97,7 @@ class TelegramBot:
     async def _send_message_async(self, message: str, parse_mode: str):
         """Send a message asynchronously."""
         await self.application.bot.send_message(
-            chat_id=self.chat_id,
-            text=message,
-            parse_mode=parse_mode
+            chat_id=self.chat_id, text=message, parse_mode=parse_mode
         )
 
     def send_trade_notification(
@@ -110,7 +107,7 @@ class TelegramBot:
         quantity: float,
         price: float,
         reason: str = "",
-        indicators: Optional[Dict[str, Any]] = None
+        indicators: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Send a trade execution notification.
 
@@ -142,7 +139,7 @@ class TelegramBot:
             message += f"*Reason:* {reason}\n"
 
         if indicators:
-            message += f"\n*Indicators:*\n"
+            message += "\n*Indicators:*\n"
             fgi = indicators.get("fgi", "N/A")
             message += f"  FGI: {fgi}\n"
 
@@ -158,11 +155,7 @@ class TelegramBot:
         return self.send_notification(message)
 
     def send_signal_notification(
-        self,
-        symbol: str,
-        signal: str,
-        price: float,
-        indicators: Dict[str, Any]
+        self, symbol: str, signal: str, price: float, indicators: Dict[str, Any]
     ) -> bool:
         """Send a new signal notification.
 
@@ -207,6 +200,55 @@ class TelegramBot:
 
         return self.send_notification(message)
 
+    def send_portfolio_notification(
+        self,
+        portfolio_summary: Dict[str, Any],
+        positions: list,
+    ) -> bool:
+        """Send a portfolio status notification.
+
+        Args:
+            portfolio_summary: Dict with keys 'total_value', 'cash', 'total_pnl', 'total_pnl_pct', 'day_pnl'
+            positions: List of dicts with position details
+
+        Returns:
+            True if notification was sent
+        """
+        if not self.enabled:
+            return False
+
+        message = "📊 *PORTFOLIO UPDATE*\n\n"
+        
+        # Portfolio Summary
+        message += f"*Total Value:* ${portfolio_summary.get('total_value', 0):,.2f}\n"
+        message += f"*Cash:* ${portfolio_summary.get('cash', 0):,.2f}\n"
+        message += f"*Total P&L:* ${portfolio_summary.get('total_pnl', 0):+,.2f} ({portfolio_summary.get('total_pnl_pct', 0):+.2f}%)\n"
+        if 'day_pnl' in portfolio_summary:
+            message += f"*Day P&L:* ${portfolio_summary.get('day_pnl', 0):+,.2f}\n"
+        
+        message += "\n*id:* " + str(datetime.now().timestamp()) + "\n"
+
+        # Positions
+        if positions:
+            message += f"\n*Positions ({len(positions)}):*\n"
+            for pos in positions:
+                symbol = pos.get("symbol", "N/A")
+                qty = pos.get("qty", 0)
+                # value = pos.get("value", 0) # Not used in compact view
+                # price = pos.get("current_price", 0) # Not always passed
+                
+                # Calculate simple approx value if not provided
+                # value = qty * price if value == 0 else value
+                
+                emoji = "🟢" if pos.get("unrealized_pnl", 0) >= 0 else "🔴"
+                message += f"{emoji} {symbol}: {qty:.4f}\n"
+        else:
+            message += "\n*Positions:* None\n"
+
+        message += f"\n*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+        return self.send_notification(message)
+
     def send_error_notification(self, error: str, context: str = "") -> bool:
         """Send an error notification.
 
@@ -220,7 +262,7 @@ class TelegramBot:
         if not self.enabled:
             return False
 
-        message = f"🚨 *ERROR*\n\n"
+        message = "🚨 *ERROR*\n\n"
         if context:
             message += f"*Context:* {context}\n"
         message += f"*Message:* {error}\n"
@@ -230,19 +272,25 @@ class TelegramBot:
 
     async def _cmd_status(self, update, context) -> None:
         """Handle /status command - show current trading status."""
-        print(f"Telegram: === RECEIVED /status COMMAND ===")
+        print("Telegram: === RECEIVED /status COMMAND ===")
         print(f"Telegram: From chat: {update.effective_chat.id}")
-        print(f"Telegram: From user: {update.effective_user.username if update.effective_user else 'unknown'}")
+        print(
+            f"Telegram: From user: {update.effective_user.username if update.effective_user else 'unknown'}"
+        )
         print(f"Telegram: Configured chat: {self.chat_id}")
         print(f"Telegram: Has status callback: {self._status_callback is not None}")
 
         # Only respond to commands from the configured chat
         if str(update.effective_chat.id) != str(self.chat_id):
-            print(f"Telegram: ❌ BLOCKED - Wrong chat ({update.effective_chat.id} != {self.chat_id})")
-            await update.message.reply_text("❌ Unauthorized chat. Commands only work from the configured chat.")
+            print(
+                f"Telegram: ❌ BLOCKED - Wrong chat ({update.effective_chat.id} != {self.chat_id})"
+            )
+            await update.message.reply_text(
+                "❌ Unauthorized chat. Commands only work from the configured chat."
+            )
             return
 
-        print(f"Telegram: ✅ Authorized chat - processing command")
+        print("Telegram: ✅ Authorized chat - processing command")
 
         if not self._status_callback:
             await update.message.reply_text(
@@ -257,7 +305,7 @@ class TelegramBot:
             # Account info
             account = status.get("account", {})
             if account:
-                message += f"*Account:*\n"
+                message += "*Account:*\n"
                 message += f"  Equity: ${account.get('equity', 0):,.2f}\n"
                 message += f"  Cash: ${account.get('cash', 0):,.2f}\n"
                 message += f"  P&L: ${account.get('pnl', 0):+,.2f}\n\n"
@@ -299,18 +347,24 @@ class TelegramBot:
 
     async def _cmd_help(self, update, context) -> None:
         """Handle /help command - show available commands."""
-        print(f"Telegram: === RECEIVED /help COMMAND ===")
+        print("Telegram: === RECEIVED /help COMMAND ===")
         print(f"Telegram: From chat: {update.effective_chat.id}")
-        print(f"Telegram: From user: {update.effective_user.username if update.effective_user else 'unknown'}")
+        print(
+            f"Telegram: From user: {update.effective_user.username if update.effective_user else 'unknown'}"
+        )
         print(f"Telegram: Configured chat: {self.chat_id}")
 
         # Only respond to commands from the configured chat
         if str(update.effective_chat.id) != str(self.chat_id):
-            print(f"Telegram: ❌ BLOCKED - Wrong chat ({update.effective_chat.id} != {self.chat_id})")
-            await update.message.reply_text("❌ Unauthorized chat. Commands only work from the configured chat.")
+            print(
+                f"Telegram: ❌ BLOCKED - Wrong chat ({update.effective_chat.id} != {self.chat_id})"
+            )
+            await update.message.reply_text(
+                "❌ Unauthorized chat. Commands only work from the configured chat."
+            )
             return
 
-        print(f"Telegram: ✅ Authorized chat - processing command")
+        print("Telegram: ✅ Authorized chat - processing command")
 
         message = """*📖 Trading Bot Commands*
 
@@ -444,7 +498,7 @@ Use /help to see available commands.
         await self._send_message_async(
             "🚀 *Trading Bot Started*\n\n"
             "Notifications enabled. Use /help to see available commands.",
-            "Markdown"
+            "Markdown",
         )
 
     def start(self) -> bool:
@@ -495,6 +549,7 @@ Use /help to see available commands.
         except Exception as e:
             print(f"Telegram: Thread error: {e}")
             import traceback
+
             traceback.print_exc()
         finally:
             self._running = False
@@ -514,26 +569,39 @@ Use /help to see available commands.
             self.application.add_handler(CommandHandler("help", self._cmd_help))
             self.application.add_handler(CommandHandler("status", self._cmd_status))
             self.application.add_handler(CommandHandler("account", self._cmd_account))
-            self.application.add_handler(CommandHandler("positions", self._cmd_positions))
+            self.application.add_handler(
+                CommandHandler("positions", self._cmd_positions)
+            )
             self.application.add_handler(CommandHandler("trades", self._cmd_trades))
 
             # Add debug handler for ALL updates
             async def debug_all_updates(update, context):
-                print(f"Telegram: 🔄 RECEIVED UPDATE: type={type(update).__name__}, chat={getattr(update.effective_chat, 'id', 'unknown')}")
-                if hasattr(update, 'message') and update.message:
-                    print(f"Telegram: 📨 MESSAGE: '{update.message.text}' from {update.effective_chat.id}")
+                print(
+                    f"Telegram: 🔄 RECEIVED UPDATE: type={type(update).__name__}, chat={getattr(update.effective_chat, 'id', 'unknown')}"
+                )
+                if hasattr(update, "message") and update.message:
+                    print(
+                        f"Telegram: 📨 MESSAGE: '{update.message.text}' from {update.effective_chat.id}"
+                    )
                     if str(update.effective_chat.id) == str(self.chat_id):
-                        await update.message.reply_text(f"🤖 Bot received: {update.message.text}")
+                        await update.message.reply_text(
+                            f"🤖 Bot received: {update.message.text}"
+                        )
                     else:
-                        print(f"Telegram: ❌ Wrong chat: {update.effective_chat.id} != {self.chat_id}")
-                elif hasattr(update, 'callback_query') and update.callback_query:
+                        print(
+                            f"Telegram: ❌ Wrong chat: {update.effective_chat.id} != {self.chat_id}"
+                        )
+                elif hasattr(update, "callback_query") and update.callback_query:
                     print(f"Telegram: 🔘 CALLBACK: {update.callback_query.data}")
                 else:
                     print(f"Telegram: ❓ OTHER UPDATE: {update}")
 
             # Add handlers for all updates
             from telegram.ext import MessageHandler, filters
-            self.application.add_handler(MessageHandler(filters.ALL, debug_all_updates), group=0)
+
+            self.application.add_handler(
+                MessageHandler(filters.ALL, debug_all_updates), group=0
+            )
 
             print("Telegram: Handlers added")
 
@@ -560,6 +628,7 @@ Use /help to see available commands.
         except Exception as e:
             print(f"Telegram: Bot error: {e}")
             import traceback
+
             traceback.print_exc()
         finally:
             # Cleanup
@@ -583,7 +652,7 @@ Use /help to see available commands.
                 task.cancel()
             # Stop the loop
             self._loop.call_soon_threadsafe(self._loop.stop)
-        if hasattr(self, '_thread') and self._thread and self._thread.is_alive():
+        if hasattr(self, "_thread") and self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)
 
 
@@ -605,18 +674,17 @@ def send_trade_notification(
     quantity: float,
     price: float,
     reason: str = "",
-    indicators: Optional[Dict[str, Any]] = None
+    indicators: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Convenience function to send trade notification."""
     bot = get_telegram_bot()
-    return bot.send_trade_notification(symbol, action, quantity, price, reason, indicators)
+    return bot.send_trade_notification(
+        symbol, action, quantity, price, reason, indicators
+    )
 
 
 def send_signal_notification(
-    symbol: str,
-    signal: str,
-    price: float,
-    indicators: Dict[str, Any]
+    symbol: str, signal: str, price: float, indicators: Dict[str, Any]
 ) -> bool:
     """Convenience function to send signal notification."""
     bot = get_telegram_bot()
@@ -627,3 +695,24 @@ def send_error_notification(error: str, context: str = "") -> bool:
     """Convenience function to send error notification."""
     bot = get_telegram_bot()
     return bot.send_error_notification(error, context)
+
+
+def send_portfolio_notification(
+    portfolio_summary: Dict[str, Any],
+    positions: list,
+) -> bool:
+    """Convenience function to send portfolio notification."""
+    bot = get_telegram_bot()
+    return bot.send_portfolio_notification(portfolio_summary, positions)
+
+
+def send_multi_asset_trade_notification(
+    symbol: str,
+    action: str,
+    quantity: float,
+    price: float,
+    reason: str = "",
+    indicators: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Convenience function to send multi-asset trade notification (alias to standard trade notification)."""
+    return send_trade_notification(symbol, action, quantity, price, reason, indicators)

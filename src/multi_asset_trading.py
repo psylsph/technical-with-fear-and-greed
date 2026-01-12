@@ -593,6 +593,68 @@ async def monitor_assets_async(
     is_live: bool = False,
 ):
     """Async monitoring loop for multiple assets with trade execution."""
+    
+    # Initialize Telegram bot
+    telegram_bot = None
+    if TELEGRAM_AVAILABLE and get_telegram_bot:
+        try:
+            telegram_bot = get_telegram_bot()
+            if telegram_bot.is_enabled():
+                # Define status callback for Telegram
+                def get_status():
+                    """Return current trading status for Telegram queries."""
+                    summary = trading_engine.get_portfolio_summary()
+                    
+                    # Format for Telegram bot status structure
+                    return {
+                        "account": {
+                            "equity": summary["total_value"],
+                            "cash": summary["cash"],
+                            "pnl": summary["total_pnl"],
+                            "day_pnl": summary.get("day_pnl", 0),
+                        },
+                        "positions": [
+                            {
+                                "symbol": pos["symbol"],
+                                "qty": pos["quantity"],
+                                "avg_entry": pos["entry_price"],
+                                "current_price": pos["current_price"],
+                                "unrealized_pnl": pos["pnl"],
+                                "unrealized_pnl_pct": pos["pnl_pct"],
+                            }
+                            for pos in summary.get("positions", [])
+                        ],
+                        # Multi-asset engine keeps history in portfolio object
+                        # We need to adapt it to recent_trades format
+                        "recent_trades": [
+                            {
+                                "side": t["action"],
+                                "qty": t["quantity"],
+                                "price": t["price"],
+                                "time": t["timestamp"]
+                            }
+                            for t in trading_engine.portfolio.trade_history[-10:]
+                        ]
+                    }
+                
+                # Set callback and start bot
+                telegram_bot.set_status_callback(get_status)
+                telegram_bot.start()
+                print("Telegram: Bot started with status callback")
+                
+                # Send startup notification
+                telegram_bot.send_notification(
+                    f"🚀 *MULTI-ASSET TRADING STARTED*\\n\\n"
+                    f"⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\\n"
+                    f"💰 Mode: {'Live Trading' if is_live else 'Paper Trading'}\\n"
+                    f"📊 Assets: {', '.join(symbols)}\\n"
+                    f"🔄 Interval: {interval_seconds}s",
+                    "Markdown"
+                )
+                print("Telegram: Startup notification sent")
+        except Exception as e:
+            print(f"Telegram: Failed to start bot: {e}")
+    
     iteration = 0
     
     while max_iterations is None or iteration < max_iterations:
@@ -610,11 +672,22 @@ async def monitor_assets_async(
             max_concurrent_trades=3,
         )
         
-        # Report executed trades
+        # Report executed trades and send Telegram notifications
         if trades:
             print(f"\n✅ Executed {len(trades)} trades:")
             for symbol, trade in trades.items():
                 print(f"  {symbol}: {trade['action']} {trade['quantity']:.6f} @ ${trade['price']:.2f}")
+                
+                # Send trade notification
+                if TELEGRAM_AVAILABLE and telegram_bot and is_live:
+                    summary = trading_engine.get_portfolio_summary()
+                    telegram_bot.send_trade_notification(
+                        symbol=symbol,
+                        action=trade['action'],
+                        quantity=trade['quantity'],
+                        price=trade['price'],
+                        reason=trade.get('reason', 'Signal-based'),
+                    )
         else:
             print("\n⏸️  No trades executed (all signals were HOLD)")
         
@@ -624,6 +697,30 @@ async def monitor_assets_async(
         print(f"Total P&L: ${summary['total_pnl']:.2f} ({summary['pnl_pct']:.1f}%)")
         print(f"Positions: {summary['num_positions']}")
         print(f"Total trades: {summary['trade_count']}")
+        
+        # Send portfolio notification via Telegram
+        if TELEGRAM_AVAILABLE and telegram_bot:
+            try:
+                positions_for_telegram = [
+                    {
+                        "symbol": pos["symbol"],
+                        "qty": pos["quantity"],
+                        "value": pos["quantity"] * pos["current_price"],
+                    }
+                    for pos in summary.get("positions", [])
+                ]
+                telegram_bot.send_portfolio_notification(
+                    portfolio_summary={
+                        "total_value": summary["total_value"],
+                        "cash": summary.get("cash", summary["total_value"]),
+                        "total_pnl": summary["total_pnl"],
+                        "total_pnl_pct": summary["pnl_pct"],
+                        "day_pnl": summary.get("day_pnl", 0),
+                    },
+                    positions=positions_for_telegram,
+                )
+            except Exception as e:
+                print(f"Telegram: Failed to send portfolio notification: {e}")
         
         iteration += 1
         await asyncio.sleep(interval_seconds)
