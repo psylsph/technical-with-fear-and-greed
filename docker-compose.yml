@@ -18,4 +18,4 @@ services:
       - ENV_FILE_LOADED=true
     stdin_open: true
     tty: true
-    command: ["python", "main.py", "--live", "-q"]
+    command: [ "python", "main.py", "--live", "--multi-asset", "--assets", "ETH-USD,BTC-USD,XRP-USD,SOL-USD" ]

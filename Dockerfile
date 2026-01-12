@@ -27,4 +27,4 @@ USER trader
 ENV NUMBA_CACHE_DIR=/tmp
 
 # Default command with test parameter
-CMD ["python", "main.py", "--live", "--multi-asset", "--assets", "ETH-USD,BTC-USD,XRP-USD,SOL-USD,XMR-USD"]
+CMD ["python", "main.py", "--live", "--multi-asset", "--assets", "ETH-USD,BTC-USD,XRP-USD,SOL-USD"]
