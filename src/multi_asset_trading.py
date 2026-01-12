@@ -1135,9 +1135,27 @@ class ExchangeMultiAssetTradingEngine:
                     
                     # Calculate position size
                     account = self.exchange.get_account()
-                    position_value = account.portfolio_value * position_size_pct
+                    target_position_value = account.portfolio_value * position_size_pct
+                    
+                    # Cap based on available cash (with 2% buffer for fees)
+                    # For buying, we are limited by available cash
+                    if action == "buy":
+                        available_cash = float(account.cash)
+                        max_affordable_value = available_cash * 0.98
+                        
+                        if target_position_value > max_affordable_value:
+                            if is_live:
+                                print(f"  ⚠️ Capping position for {symbol} due to cash: ${target_position_value:.2f} -> ${max_affordable_value:.2f}")
+                            target_position_value = max_affordable_value
+                        
+                        # Check minimum position value
+                        if target_position_value < asset_config.trading.min_position_value:
+                            if is_live and available_cash < asset_config.trading.min_position_value:
+                                print(f"  ⚠️ Insufficient cash for {symbol}: ${available_cash:.2f} (Min: ${asset_config.trading.min_position_value})")
+                            continue
+
                     current_price = current_prices.get(symbol, 0)
-                    quantity = position_value / current_price if current_price > 0 else 0
+                    quantity = target_position_value / current_price if current_price > 0 else 0
                     
                     if quantity <= 0:
                         continue

@@ -299,7 +299,7 @@ class TelegramBot:
             return
 
         try:
-            status = self._status_callback()
+            status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
             message = "*📊 TRADING STATUS*\n\n"
 
             # Account info
@@ -402,7 +402,7 @@ Use /help to see available commands.
             await update.message.reply_text("Status callback not configured.")
             return
 
-        status = self._status_callback()
+        status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
         account = status.get("account", {})
 
         if not account:
@@ -430,7 +430,7 @@ Use /help to see available commands.
             await update.message.reply_text("Status callback not configured.")
             return
 
-        status = self._status_callback()
+        status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
         positions = status.get("positions", [])
 
         if not positions:
@@ -463,7 +463,7 @@ Use /help to see available commands.
             await update.message.reply_text("Status callback not configured.")
             return
 
-        status = self._status_callback()
+        status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
         trades = status.get("recent_trades", [])
 
         if not trades:
