@@ -138,7 +138,7 @@ def main():
     if args.train_advanced:
         train_advanced_ml_models()
         return
-    
+
     # Handle show assets request
     if args.show_assets:
         show_available_assets()
@@ -196,41 +196,47 @@ def main():
     elif args.test:
         # Parse assets
         assets = [asset.strip() for asset in args.assets.split(",")]
-        
+
         if args.multi_asset:
             # Multi-asset test mode
             print("\n" + "=" * 60)
             print(f"MULTI-ASSET TEST MODE ({len(assets)} assets)")
             print("=" * 60)
-            
+
             # Update FGI data in trading engine
             trading_engine.update_fgi_data()
-            
+
             # Execute trades in test mode
-            trades = execute_multi_asset_trades(
-                symbols=assets,
-                is_live=False,
+            import asyncio
+
+            trades = asyncio.run(
+                execute_multi_asset_trades(
+                    symbols=assets,
+                    is_live=False,
+                )
             )
-            
+
             # Show portfolio summary
             print("\n" + "=" * 60)
             print("PORTFOLIO SUMMARY")
             print("=" * 60)
-            
+
             summary = trading_engine.get_portfolio_summary()
             print(f"Cash: ${summary['cash']:.2f}")
             print(f"Total value: ${summary['total_value']:.2f}")
             print(f"Total P&L: ${summary['total_pnl']:.2f} ({summary['pnl_pct']:.1f}%)")
             print(f"Positions: {summary['num_positions']}")
             print(f"Total trades: {summary['trade_count']}")
-            
+
             if trades:
                 print(f"\nExecuted {len(trades)} trades:")
                 for symbol, trade in trades.items():
-                    print(f"  {symbol}: {trade['action']} {trade['quantity']:.6f} @ ${trade['price']:.2f}")
+                    print(
+                        f"  {symbol}: {trade['action']} {trade['quantity']:.6f} @ ${trade['price']:.2f}"
+                    )
             else:
                 print("\nNo trades executed (all signals were HOLD)")
-        
+
         else:
             # Single asset test mode (backward compatible)
             print("\n" + "=" * 60)
@@ -249,7 +255,9 @@ def main():
                 )
                 print(f"Market Regime: {ind.get('fgi_trend', 'unknown').upper()}")
                 print(f"Signal: {signal_info['signal'].upper()}")
-                print(f"Position Size: {ind.get('position_size_pct', 0):.1f}% of portfolio")
+                print(
+                    f"Position Size: {ind.get('position_size_pct', 0):.1f}% of portfolio"
+                )
                 print(f"Extreme Fear: {ind.get('is_extreme_fear', False)}")
                 print(f"Extreme Greed: {ind.get('is_extreme_greed', False)}")
                 print(f"Volatility Stop: ${ind.get('volatility_stop', 0):,.2f}")
@@ -285,25 +293,26 @@ def main():
         print("DEBUG: Entering live trading mode")
         # Parse assets
         assets = [asset.strip() for asset in args.assets.split(",")]
-        
+
         if args.multi_asset:
             # Multi-asset live trading
             print("\n" + "=" * 70)
             print(f"MULTI-ASSET LIVE TRADING MODE ({len(assets)} assets)")
             print("=" * 70)
-            
+
             print(f"\nTrading assets: {', '.join(assets)}")
             print("\nWARNING: This will execute REAL trades with REAL money!")
             print("Make sure you have sufficient funds and understand the risks.")
-            
+
             # Validate portfolio
             from src.multi_asset_config import validate_asset_portfolio
+
             is_valid, message = validate_asset_portfolio(assets)
             if not is_valid:
                 print(f"\n❌ Portfolio validation failed: {message}")
                 print("Please adjust your asset selection.")
                 return
-            
+
             # Check for live trading permissions
             live_assets = []
             for asset in assets:
@@ -311,64 +320,69 @@ def main():
                 if config.live_trading_allowed:
                     live_assets.append(asset)
                 else:
-                    print(f"⚠️  {asset} is not enabled for live trading (paper trading only)")
-            
+                    print(
+                        f"⚠️  {asset} is not enabled for live trading (paper trading only)"
+                    )
+
             if not live_assets:
                 print("\n❌ No assets enabled for live trading.")
                 print("Check asset configurations in src/multi_asset_config.py")
                 return
-            
+
             print(f"\n✅ Live trading enabled for: {', '.join(live_assets)}")
-            
+
             # Auto-confirm for live trading (removed manual confirmation)
-            print("\n" + "-"*70)
+            print("\n" + "-" * 70)
             print("Starting live trading automatically...")
-            
+
             # Update FGI data in trading engine
             trading_engine.update_fgi_data()
-            
+
             # Start continuous live trading monitor
             print("\nStarting live trading monitor...")
             print("Press Ctrl+C to stop\n")
-            
-            try:
 
+            try:
                 import asyncio
                 from src.multi_asset_trading import run_exchange_live_trading
-                
+
                 print(f"DEBUG: Starting async monitoring for {live_assets}")
                 print("DEBUG: Interval: 300 seconds, Live: True")
-                
+
                 # Get API keys from environment
                 api_key = os.environ.get("ALPACA_API_KEY")
                 secret_key = os.environ.get("ALPACA_SECRET_KEY")
                 is_paper = os.environ.get("ALPACA_PAPER", "True").lower() == "true"
-                
+
                 print(f"DEBUG: Using Exchange: Alpaca (Paper={is_paper})")
-                
+
                 # Run async monitoring loop with live trading
-                asyncio.run(run_exchange_live_trading(
-                    symbols=live_assets,
-                    exchange_type="alpaca",
-                    api_key=api_key,
-                    secret_key=secret_key,
-                    paper=is_paper,
-                    interval_seconds=300,  # Check every 5 minutes
-                    max_iterations=None,  # Run indefinitely
-                ))
-                
+                asyncio.run(
+                    run_exchange_live_trading(
+                        symbols=live_assets,
+                        exchange_type="alpaca",
+                        api_key=api_key,
+                        secret_key=secret_key,
+                        paper=is_paper,
+                        interval_seconds=300,  # Check every 5 minutes
+                        max_iterations=None,  # Run indefinitely
+                    )
+                )
+
                 print("DEBUG: Async monitoring completed")
-            
+
             except KeyboardInterrupt:
                 print("\n\nLive trading stopped by user.")
             except Exception as e:
                 print(f"\n❌ Error in live trading: {e}")
                 import traceback
+
                 traceback.print_exc()
-        
+
         else:
             # Single asset live trading (backward compatible)
             from src.trading.trading_engine import run_live_trading
+
             run_live_trading(fgi_df)
 
 
@@ -1577,20 +1591,20 @@ def show_ml_status():
 
 def show_available_assets():
     """Show available assets and their configurations."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("AVAILABLE ASSETS FOR TRADING")
-    print("="*70)
-    
+    print("=" * 70)
+
     enabled_assets = asset_registry.get_enabled_assets()
     live_assets = asset_registry.get_live_trading_assets()
-    
+
     print(f"\nTotal enabled assets: {len(enabled_assets)}")
     print(f"Live trading enabled: {len(live_assets)}")
-    
-    print("\n" + "-"*70)
+
+    print("\n" + "-" * 70)
     print("ASSET DETAILS")
-    print("-"*70)
-    
+    print("-" * 70)
+
     for asset in enabled_assets:
         print(f"\n{asset.symbol} ({asset.name})")
         print(f"  Category: {asset.category.value}")
@@ -1598,18 +1612,22 @@ def show_available_assets():
         print(f"  Max Position: {asset.trading.max_position_size_pct:.1%}")
         print(f"  Take Profit: {asset.trading.take_profit_pct:.1%}")
         print(f"  Stop Loss: {asset.trading.stop_loss_pct:.1%}")
-        
+
         if asset.historical_sharpe:
             print(f"  Historical Sharpe: {asset.historical_sharpe:.2f}")
         if asset.historical_win_rate:
             print(f"  Historical Win Rate: {asset.historical_win_rate:.1%}")
-    
-    print("\n" + "-"*70)
+
+    print("\n" + "-" * 70)
     print("USAGE EXAMPLES:")
-    print("-"*70)
+    print("-" * 70)
     print("  Single asset: python main.py --test --assets ETH-USD")
-    print("  Multi-asset:  python main.py --test --multi-asset --assets ETH-USD,BTC-USD,SOL-USD")
-    print("  Live trading: python main.py --live --multi-asset --assets ETH-USD,BTC-USD")
+    print(
+        "  Multi-asset:  python main.py --test --multi-asset --assets ETH-USD,BTC-USD,SOL-USD"
+    )
+    print(
+        "  Live trading: python main.py --live --multi-asset --assets ETH-USD,BTC-USD"
+    )
 
 
 def train_advanced_ml_models():

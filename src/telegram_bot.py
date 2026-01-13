@@ -218,14 +218,14 @@ class TelegramBot:
             return False
 
         message = "📊 *PORTFOLIO UPDATE*\n\n"
-        
+
         # Portfolio Summary
         message += f"*Total Value:* ${portfolio_summary.get('total_value', 0):,.2f}\n"
         message += f"*Cash:* ${portfolio_summary.get('cash', 0):,.2f}\n"
         message += f"*Total P&L:* ${portfolio_summary.get('total_pnl', 0):+,.2f} ({portfolio_summary.get('total_pnl_pct', 0):+.2f}%)\n"
-        if 'day_pnl' in portfolio_summary:
+        if "day_pnl" in portfolio_summary:
             message += f"*Day P&L:* ${portfolio_summary.get('day_pnl', 0):+,.2f}\n"
-        
+
         message += "\n*id:* " + str(datetime.now().timestamp()) + "\n"
 
         # Positions
@@ -236,10 +236,10 @@ class TelegramBot:
                 qty = pos.get("qty", 0)
                 # value = pos.get("value", 0) # Not used in compact view
                 # price = pos.get("current_price", 0) # Not always passed
-                
+
                 # Calculate simple approx value if not provided
                 # value = qty * price if value == 0 else value
-                
+
                 emoji = "🟢" if pos.get("unrealized_pnl", 0) >= 0 else "🔴"
                 message += f"{emoji} {symbol}: {qty:.4f}\n"
         else:
@@ -299,7 +299,15 @@ class TelegramBot:
             return
 
         try:
-            status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
+            # Check if callback is async
+            import inspect
+
+            if inspect.iscoroutinefunction(self._status_callback):
+                status = await self._status_callback()
+            else:
+                status = await asyncio.get_running_loop().run_in_executor(
+                    None, self._status_callback
+                )
             message = "*📊 TRADING STATUS*\n\n"
 
             # Account info
@@ -337,7 +345,9 @@ class TelegramBot:
                     price = trade.get("price", 0)
                     time_str = trade.get("time", "")
                     symbol = trade.get("symbol", "N/A")
-                    message += f"  {action} {qty:.6f} {symbol} @ ${price:,.2f} - {time_str}\n"
+                    message += (
+                        f"  {action} {qty:.6f} {symbol} @ ${price:,.2f} - {time_str}\n"
+                    )
 
             message += f"\n*Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
@@ -402,7 +412,15 @@ Use /help to see available commands.
             await update.message.reply_text("Status callback not configured.")
             return
 
-        status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
+        # Check if callback is async
+        import inspect
+
+        if inspect.iscoroutinefunction(self._status_callback):
+            status = await self._status_callback()
+        else:
+            status = await asyncio.get_running_loop().run_in_executor(
+                None, self._status_callback
+            )
         account = status.get("account", {})
 
         if not account:
@@ -430,7 +448,15 @@ Use /help to see available commands.
             await update.message.reply_text("Status callback not configured.")
             return
 
-        status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
+        # Check if callback is async
+        import inspect
+
+        if inspect.iscoroutinefunction(self._status_callback):
+            status = await self._status_callback()
+        else:
+            status = await asyncio.get_running_loop().run_in_executor(
+                None, self._status_callback
+            )
         positions = status.get("positions", [])
 
         if not positions:
@@ -463,7 +489,15 @@ Use /help to see available commands.
             await update.message.reply_text("Status callback not configured.")
             return
 
-        status = await asyncio.get_running_loop().run_in_executor(None, self._status_callback)
+        # Check if callback is async
+        import inspect
+
+        if inspect.iscoroutinefunction(self._status_callback):
+            status = await self._status_callback()
+        else:
+            status = await asyncio.get_running_loop().run_in_executor(
+                None, self._status_callback
+            )
         trades = status.get("recent_trades", [])
 
         if not trades:
@@ -630,8 +664,12 @@ Use /help to see available commands.
                 await asyncio.sleep(1)
 
         except Conflict:
-            print("\n❌ Telegram Conflict Error: Another instance of the bot is running.")
-            print("   Please stop the other instance (e.g., Docker container) and try again.\n")
+            print(
+                "\n❌ Telegram Conflict Error: Another instance of the bot is running."
+            )
+            print(
+                "   Please stop the other instance (e.g., Docker container) and try again.\n"
+            )
             self._running = False
         except Exception as e:
             print(f"Telegram: Bot error: {e}")
